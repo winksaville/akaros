@@ -1,0 +1,48 @@
+Automated Testing 
+----------------------------
+This document outlines our plans for automated testing with Akaros.
+When completed, the testing framework will be used to both verify successful
+compilation of akaros (and its supporting user libraries and cross compiler),
+as well as perform automated tests of these.
+
+Currently, our testing is done in a very ad-hoc manner.  For kernel tests, we
+simply add a function to the file 'kern/src/testing.c' and run it periodically
+from the kernel monitor to verify that it still works. For user tests, we
+create a new file in 'tests/' and run 'make tests' followed by 'make fill-kfs'
+to make and install the tests so akaros can run them once booted.  We then just
+peridically run them when we think we might have broken something.
+
+We obviously need something better.
+
+At a minimum we need a framework that can automate the following on every commit:
+	- Verify successful kernel compilation
+	- Verify successful compilation of our user libraries
+	- Verify successful compilation of the cross compiler for all supported
+	  archs on commits that touch a file in the cross compiler
+	- Compile and run a suite of kernel and user tests and verify their success
+
+The framework should support easily adding/removing tests, as well as a way to
+easily turn them on and off, without actually removing them. We should also
+have a way of notifying us if something breaks, and a way to turn off
+notifications for individual tests, if things start to get too noisy.
+Independent of how we do notifications, we should have a dashboard indicating
+the current state of what's passing/failing, and a way to look through the
+history of this for every commit.
+
+An example of such a dashboard can be found at: http://build.golang.org/
+Our's does not need to be this sophisticated at first.  A simple text file with
+all the relevant information will suffice, and it's history can be kept track
+of by versioning it in a git repo.
+
+
+Unorganized stuff
+----------------------------
+Use configure variables integrated with KBuild for kernel test on/off
+Mention difficulty of running some tests.
+	- Need specific kernel configs
+	- Specific timing between injecting inputs for some tests
+Mention technologies we are considering using
+	- Junit like framework for writing tests
+	- Autotest? https://github.com/autotest/autotest
+Send email notification if cross compiler needs a rebuild
+
