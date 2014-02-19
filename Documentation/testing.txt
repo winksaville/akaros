@@ -46,3 +46,8 @@ Mention technologies we are considering using
 	- Autotest? https://github.com/autotest/autotest
 Send email notification if cross compiler needs a rebuild
 
+
+Links 
+----------------------------
+- Converting VirtualBox VDI image to Xen:
+  https://www.serverstack.com/blog/2012/11/20/converting-virtualbox-vm-to-a-xen-hypervisor-virtual-machine/
