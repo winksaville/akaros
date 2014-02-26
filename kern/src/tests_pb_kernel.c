@@ -1,3 +1,6 @@
+/*
+ * Postboot kernel tests: Tests to be ran after boot in kernel mode.
+ */
 
 #ifdef __SHARC__
 #pragma nosharc
@@ -38,6 +41,7 @@
 #include <umem.h>
 #include <ucq.h>
 #include <setjmp.h>
+
 #include <apipe.h>
 #include <rwlock.h>
 #include <rendez.h>

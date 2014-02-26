@@ -22,7 +22,7 @@
 #include <process.h>
 #include <schedule.h>
 #include <syscall.h>
-#include <testing.h>
+#include "test_infrastructure.h"
 #include <kfs.h>
 #include <stdio.h>
 #include <time.h>
@@ -33,6 +33,22 @@
 #include <arch/console.h>
 #include <time.h>
 #include <ros/arch/membar.h>
+
+
+void postboot_kernel_tests(void)
+{
+	printk("\nRunning %d postboot Kernel tests:\n", 
+		   num_pb_kernel_tests);
+	for (int i=0; i<num_pb_kernel_tests; i++) {
+		struct pb_kernel_test *test = &pb_kernel_tests[i];
+		if (test->enabled) {
+			bool result = test->func();
+			printk("\t[%s] RESULT: %d\n", test->name, result);
+		} else {
+			printk("\t[%s] DISABLED\n", test->name);
+		}
+	}
+}
 
 /*
  * Currently, if you leave this function by way of proc_run (process_workqueue
@@ -48,6 +64,11 @@ void manager(void)
 	// LoL
 	#define PASTE(s1,s2) s1 ## s2
 	#define MANAGER_FUNC(dev) PASTE(manager_,dev)
+
+	// Run Kernel post boot tests (from tests_postboot_kernel.c)
+	#ifdef CONFIG_POSTBOOT_KERNEL_TESTING
+		postboot_kernel_tests();
+	#endif
 
 	void MANAGER_FUNC(DEVELOPER_NAME)(void);
 	MANAGER_FUNC(DEVELOPER_NAME)();
