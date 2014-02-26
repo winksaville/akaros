@@ -3,7 +3,7 @@
  */
 
 #include <stdbool.h>
-#include "test_infrastructure.h"
+#include <test_infrastructure.h>
 #include "tests_pb_kernel.c"
 
 
@@ -11,40 +11,41 @@
 
 struct pb_kernel_test pb_kernel_tests[] = {
 #ifdef CONFIG_X86	
-	{"test_ipi_sending", test_ipi_sending, true},
-	{"test_pic_reception", test_pic_reception, true},
-	{"test_ioapic_pit_reroute", test_ioapic_pit_reroute, true},
-	{"test_lapic_status_bit", test_lapic_status_bit, true},
-	{"test_pit", test_pit, true},
-	{"test_circ_buffer", test_circ_buffer, true},
-	{"test_kernel_messages", test_kernel_messages, true},
+	PB_K_TEST_REG(ipi_sending, false),
+	PB_K_TEST_REG(pic_reception, false),
+	PB_K_TEST_REG(ioapic_pit_reroute, false),
+	PB_K_TEST_REG(lapic_status_bit, false),
+	PB_K_TEST_REG(pit, false),
+	PB_K_TEST_REG(circ_buffer, false),
+	PB_K_TEST_REG(kernel_messages, false),
 #endif // CONFIG_X86
-	{"test_print_info", test_print_info, true},
-	{"test_page_coloring", test_page_coloring, true},
-	{"test_color_alloc", test_color_alloc, true},
-	{"test_barrier", test_barrier, true},
-	{"test_interrupts_irqsave", test_interrupts_irqsave, true},
-	{"test_bitmasks", test_bitmasks, true},
-	{"test_checklists", test_checklists, true},
-	{"test_slab", test_slab, true},
-	{"test_kmalloc", test_kmalloc, true},
-	{"test_hashtable", test_hashtable, true},
-	{"test_bcq", test_bcq, true},
-	{"test_ucq", test_ucq, true},
-	{"test_vm_regions", test_vm_regions, true},
-	{"test_radix_tree", test_radix_tree, true},
-	{"test_random_fs", test_random_fs, true},
-	{"test_kthreads", test_kthreads, true},
-	{"test_kref", test_kref, true},
-	{"test_atomics", test_atomics, true},
-	{"test_abort_halt", test_abort_halt, true},
-	{"test_cv", test_cv, true},
-	{"test_memset", test_memset, true},
-	{"test_setjmp", test_setjmp, true},
-	{"test_apipe", test_apipe, true},
-	{"test_rwlock", test_rwlock, true},
-	{"test_rv", test_rv, true},
-	{"test_alarm", test_alarm, true}
+	PB_K_TEST_REG(print_info, false), 
+	PB_K_TEST_REG(page_coloring, false),
+	PB_K_TEST_REG(color_alloc, false),
+	PB_K_TEST_REG(barrier, false),
+	PB_K_TEST_REG(interrupts_irqsave, true),
+	PB_K_TEST_REG(bitmasks, true),
+	PB_K_TEST_REG(checklists, false),
+	PB_K_TEST_REG(smp_call_functions, false),
+	PB_K_TEST_REG(slab, false),
+	PB_K_TEST_REG(kmalloc, false),
+	PB_K_TEST_REG(hashtable, true),
+	PB_K_TEST_REG(bcq, false),
+	PB_K_TEST_REG(ucq, false),
+	PB_K_TEST_REG(vm_regions, true),
+	PB_K_TEST_REG(radix_tree, true),
+	PB_K_TEST_REG(random_fs, false),
+	PB_K_TEST_REG(kthreads, false),
+	PB_K_TEST_REG(kref, false),
+	PB_K_TEST_REG(atomics, false),
+	PB_K_TEST_REG(abort_halt, false),
+	PB_K_TEST_REG(cv, false),
+	PB_K_TEST_REG(memset, false),
+	PB_K_TEST_REG(setjmp, false),
+	PB_K_TEST_REG(apipe, false),
+	PB_K_TEST_REG(rwlock, false),
+	PB_K_TEST_REG(rv, false),
+	PB_K_TEST_REG(alarm, false)
 };
 
 int num_pb_kernel_tests = sizeof(pb_kernel_tests) / 

@@ -22,7 +22,7 @@
 #include <process.h>
 #include <schedule.h>
 #include <syscall.h>
-#include "test_infrastructure.h"
+#include <test_infrastructure.h>
 #include <kfs.h>
 #include <stdio.h>
 #include <time.h>
@@ -43,9 +43,13 @@ void postboot_kernel_tests(void)
 		struct pb_kernel_test *test = &pb_kernel_tests[i];
 		if (test->enabled) {
 			bool result = test->func();
-			printk("\t[%s] RESULT: %d\n", test->name, result);
+			if (result) {
+				printk("\tPASSED   [%s]\n", test->name);
+			} else {
+				printk("\tFAILED   [%s]\n", test->name);
+			}
 		} else {
-			printk("\t[%s] DISABLED\n", test->name);
+			printk("\tDISABLED [%s]\n", test->name);
 		}
 	}
 }
