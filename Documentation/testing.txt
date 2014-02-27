@@ -51,3 +51,167 @@ Links
 ----------------------------
 - Converting VirtualBox VDI image to Xen:
   https://www.serverstack.com/blog/2012/11/20/converting-virtualbox-vm-to-a-xen-hypervisor-virtual-machine/
+
+
+================================================================================
+======================== W.I.P. OF ACTUAL DOCUMENTATION ========================
+================================================================================
+
+testing.txt
+Alfonso Gomez Jordana and Kevin Klues
+
+This document explains how the AKAROS testing framework works: It contains both
+straight-to-the-point instructions on where & how to set up a new unit test, to
+a detailed and thorough explanation of how all the components work together 
+under the hood to make tests run.
+
+Part 1: Overview
+Part 2: Instructions for adding a new test
+Part 3: How to run tests
+Part 4: Kernel testing internals
+Part 5: Userspace testing internals
+Part 6: Continuous integration server
+
+
+Revision History:
+2014-02-26 - Initial version
+
+Part 1: Overview 
+=====================================
+
+The AKAROS testing framework consists on an automated Continuous Integration
+server that runs several kinds of test whenever a new commit is pushed to the
+master branch in the repository, and generates reports with the results.
+
+Some or all of the following things will be tested when a new commit is pushed
+to the server, depending on the parts of the code that are modified:
+* Cross-compiler compiles without errors
+* Kernel compiles without errors
+* Userspace libs compile without errors
+* Userspace programs compile without errors
+* Kernel tests pass without errors (this includes during-boot kernel tests and
+  post-boot kernel ones)
+* Userspace tests pass without errors
+
+
+
+Part 2: How to add a test
+=====================================
+
+2.1 Determining the type of test to create
+------------------------------------------------------------------
+There are three different types of tests that you can create now in Akaros:
+* Unit tests in kernel space that run at some specific point during boot.
+* Unit tests in kernel space that run after boot.
+* Unit tests in user space that run after boot.
+
+(These may be extended in the future to include, for example, cross-compiler 
+unit tests.)
+
+The reasons for choosing one or another would be: 
+TODO: Add reasons
+
+2.2 During-boot kernel unit tests
+------------------------------------------------------------------
+TODO: Write
+
+2.3 Post-boot kernel unit tests
+------------------------------------------------------------------
+	1. Go to akaros/kern/src/tests_pb_kernel.c
+	2. Create a new function for the test. Follow the following pattern:
+		bool test_[NAME](void)
+		{
+			[CODE]
+			return true;
+		}
+	3. Inside the [CODE] section, use the following assertion functions:
+		* KT_ASSERT(boolean-expression): runs the expression and, if it fails, 
+		  it finishes the full unit test with a result of FAILED.
+		* KT_ASSERT_M(message, boolean-expression): like KT_ASSERT but, in case
+		  of failure, the message gets printed as cause of failure.
+	4. Go to akaros/kern/src/tests.c
+	5. Add inside the pb_kernel_tests array a line like the following:
+		PB_K_TEST_REG([NAME], true), 
+		(Optionally, disable temporarily the test by setting the second arg to
+		false).
+
+		If you'd like a test to be ran only in a given architecture, surround
+		it here by #ifdefine CONFIG_[ARCH] ... #endif tags.
+
+2.4 Userspace unit tests
+------------------------------------------------------------------
+TODO: Write
+
+
+
+Part 3: How to run a suite of tests
+=====================================
+
+By default, tests are not run automatically. Tests have to be enabled somehow 
+during compilation.
+
+The easiest way to activate tests is to activate them all by running 
+	make ARCH=XXX deftestconfig
+
+If you need more specific control about which tests to activate, you can run
+	make ARCH=XXX menuconfig
+and then select, from the Testing submenu, which tests to run.
+
+Once you activate the tests you want, you will just need to compile kernel, 
+userspace tests... and then boot akaros, and they'll run automatically and 
+output to console :)
+
+Additionally, every time a new commit is pushed to master in the github repo, 
+the Continuous Integration server (see part 6) will automatically run relevant
+tests and report on them.
+
+
+
+Part 4: Kernel testing internals
+=====================================
+
+4.1 During-boot testing
+------------------------------------------------------------------
+TODO: Write
+
+4.2 Post-boot testing
+------------------------------------------------------------------
+To accomplish post-boot testing, the following files are involved:
+	akaros/kern/src/manager.c
+	akaros/kern/src/tests.c
+	akaros/kern/src/tests_pb_kernel.c
+	akaros/include/test_infrastructure.h
+
+test_infrastructure.h:
+	This file defines macros used for assertions, as well as data structures,
+	variables and a macro for registering postboot tests.
+
+tests_pb_kernel.c:
+	This file contains the implementation of all the tests in this category.
+
+tests.c:
+	This file is where all test names are registered for them to be ran.
+
+manager.c:
+	In this file, via the function postboot_kernel_tests(), all tests are
+	executed after the kernel has loaded. This function is in charge of printing
+	all test results too.
+
+4.3 Userspace testing
+------------------------------------------------------------------
+TODO: Write
+
+4.4 Enabling / disabling tests
+------------------------------------------------------------------
+For enabling and disabling tests, we use CONFIG variables. In particular, the
+following are the variables used:
+	* CONFIG_POSTBOOT_KERNEL_TESTING
+	* TODO: Fill this in once we have more.
+
+These variables are defined in the akaros/KConfig file.
+
+TODO: Speak here about deftestconfig once we have set it up
+
+
+
+TODO: Write rest of sections
