@@ -42,7 +42,7 @@ struct pb_kernel_test {
 };
 
 /* Macro for registering a postboot kernel test. */
-#define PB_K_TEST_REG(name, enabled)                                            \
+#define PB_K_TEST_REG(name, enabled)                                             \
 	{"test_" #name, test_##name, enabled}
 
 extern struct pb_kernel_test pb_kernel_tests[];
