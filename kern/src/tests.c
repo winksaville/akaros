@@ -10,7 +10,7 @@
 /* Postboot kernel tests declarations. */
 
 struct pb_kernel_test pb_kernel_tests[] = {
-#ifdef CONFIG_X86	
+#ifdef CONFIG_X86
 	PB_K_TEST_REG(ipi_sending, false),
 	PB_K_TEST_REG(pic_reception, false),
 	PB_K_TEST_REG(ioapic_pit_reroute, false),
@@ -48,5 +48,5 @@ struct pb_kernel_test pb_kernel_tests[] = {
 	PB_K_TEST_REG(alarm, false)
 };
 
-int num_pb_kernel_tests = sizeof(pb_kernel_tests) / 
+int num_pb_kernel_tests = sizeof(pb_kernel_tests) /
                           sizeof(struct pb_kernel_test);
