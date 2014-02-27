@@ -34,6 +34,8 @@
 #include <time.h>
 #include <ros/arch/membar.h>
 
+char *kern_test_msg;
+
 
 void postboot_kernel_tests(void)
 {
@@ -46,7 +48,8 @@ void postboot_kernel_tests(void)
 			if (result) {
 				printk("\tPASSED   [%s]\n", test->name);
 			} else {
-				printk("\tFAILED   [%s]\n", test->name);
+				printk("\tFAILED   [%s]   %s\n", test->name, kern_test_msg);
+				kfree(kern_test_msg);
 			}
 		} else {
 			printk("\tDISABLED [%s]\n", test->name);

@@ -1,8 +1,14 @@
+#ifndef ROS_INC_TEST_INFRASTRUCTURE_H
+#define ROS_INC_TEST_INFRASTRUCTURE_H
+
 /*
  * Header file with infrastructure needed for kernel unit tests:
  *  - Assertion functions.
  *  - Test structures.
  */
+
+#include <stdio.h>
+#include <kmalloc.h>
 
 /* Macros for assertions. 
  * They depend on <stdbool.h> and printk() to be included in the source file. 
@@ -10,7 +16,11 @@
 #define KT_ASSERT_M(message, test)                                               \
 	do {                                                                         \
 		if (!(test)) {                                                           \
-			printk("Assertion failed: %s\n", message);                           \
+			extern char *kern_test_msg;                                          \
+			char prefix[] = "Assertion failed: ";                                \
+			int msg_size = sizeof(prefix) + sizeof(message) - 1;                 \
+			kern_test_msg = (char*) kmalloc(msg_size, 0);                        \
+			snprintf(kern_test_msg, msg_size, "%s%s", prefix, message);          \
 			return false;                                                        \
 		}                                                                        \
 	} while (0)
@@ -37,3 +47,5 @@ struct pb_kernel_test {
 
 extern struct pb_kernel_test pb_kernel_tests[];
 extern int num_pb_kernel_tests;
+
+#endif // ROS_INC_TEST_INFRASTRUCTURE_H
