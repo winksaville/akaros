@@ -13,6 +13,7 @@
 #include <stdarg.h>
 #include <kthread.h>
 #include <ns.h>
+#include <acpi.h>
 
 /* Print a number (base <= 16) in reverse order,
  * using specified putch function and associated pointer putdat. */
@@ -60,6 +61,7 @@ void vprintfmt(void (*putch)(int, void**), void **putdat, const char *fmt, va_li
 	int base, lflag, width, precision, altflag;
 	char padc;
 	uint8_t *mac, *ip, *mask;
+	struct Gas *g;
 	int i;
 	uint32_t *lp;
 
