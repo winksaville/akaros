@@ -1310,29 +1310,30 @@ bool test_radix_tree(void)
 }
 
 /* Assorted FS tests, which were hanging around in init.c */
+// TODO: remove all the print statements and try to convert most into assertions
 bool test_random_fs(void)
 {
 	int retval = do_symlink("/dir1/sym", "/bin/hello", S_IRWXU);
-	if (retval)
-		printk("symlink1 creation failed\n");
+	KT_ASSERT_M("symlink1 should be created successfully", 
+	            (!retval));
 	retval = do_symlink("/symdir", "/dir1/dir1-1", S_IRWXU);
-	if (retval)
-		printk("symlink1 creation failed\n");
+	KT_ASSERT_M("symlink1 should be created successfully", 
+	            (!retval));
 	retval = do_symlink("/dir1/test.txt", "/dir2/test2.txt", S_IRWXU);
-	if (retval)
-		printk("symlink2 creation failed\n");
+	KT_ASSERT_M("symlink2 should be created successfully", 
+	            (!retval));
 	retval = do_symlink("/dir1/dir1-1/up", "../../", S_IRWXU);
-	if (retval)
-		printk("symlink3 creation failed\n");
+	KT_ASSERT_M("symlink3 should be created successfully", 
+	            (!retval));
 	retval = do_symlink("/bin/hello-sym", "hello", S_IRWXU);
-	if (retval)
-		printk("symlink4 creation failed\n");
-	
+	KT_ASSERT_M("symlink4 should be created successfully", 
+	            (!retval));
+
 	struct dentry *dentry;
 	struct nameidata nd_r = {0}, *nd = &nd_r;
 	retval = path_lookup("/dir1/sym", 0, nd);
-	if (retval)
-		printk("symlink lookup failed: %d\n", retval);
+	KT_ASSERT_M("symlink lookup should work for an existing symlink", 
+	            (!retval));	
 	char *symname = nd->dentry->d_inode->i_op->readlink(nd->dentry);
 	printk("Pathlookup got %s (sym)\n", nd->dentry->d_name.name);
 	if (!symname)
@@ -1343,16 +1344,17 @@ bool test_random_fs(void)
 	/* try with follow */
 	memset(nd, 0, sizeof(struct nameidata));
 	retval = path_lookup("/dir1/sym", LOOKUP_FOLLOW, nd);
-	if (retval)
-		printk("symlink lookup failed: %d\n", retval);
+	
+	KT_ASSERT_M("symlink lookup should work for an existing symlink", 
+	            (!retval));
 	printk("Pathlookup got %s (hello)\n", nd->dentry->d_name.name);
 	path_release(nd);
 	
 	/* try with a directory */
 	memset(nd, 0, sizeof(struct nameidata));
 	retval = path_lookup("/symdir/f1-1.txt", 0, nd);
-	if (retval)
-		printk("symlink lookup failed: %d\n", retval);
+	KT_ASSERT_M("symlink lookup should work for an existing symlink", 
+	            (!retval));
 	printk("Pathlookup got %s (f1-1.txt)\n", nd->dentry->d_name.name);
 	path_release(nd);
 	
@@ -1360,16 +1362,16 @@ bool test_random_fs(void)
 	printk("Try with a rel path\n");
 	memset(nd, 0, sizeof(struct nameidata));
 	retval = path_lookup("/symdir/up/hello.txt", 0, nd);
-	if (retval)
-		printk("symlink lookup failed: %d\n", retval);
+	KT_ASSERT_M("symlink lookup should work for an existing symlink", 
+	            (!retval));
 	printk("Pathlookup got %s (hello.txt)\n", nd->dentry->d_name.name);
 	path_release(nd);
 	
 	printk("Try for an ELOOP\n");
 	memset(nd, 0, sizeof(struct nameidata));
 	retval = path_lookup("/symdir/up/symdir/up/symdir/up/symdir/up/hello.txt", 0, nd);
-	if (retval)
-		printk("Symlink lookup failed (it should): %d (-40)\n", retval);
+	KT_ASSERT_M("symlink lookup should fail for a non existing symlink", 
+	            (retval));
 	path_release(nd);
 
 	return true;
@@ -1392,6 +1394,7 @@ static void __test_up_sem(uint32_t srcid, long a0, long a1, long a2)
  * better infrastructure, we send ourselves a kmsg to run the kthread, which
  * we'll handle in smp_idle (which you may have to manually call).  Note this
  * doesn't test things like memory being leaked, or dealing with processes. */
+// TODO: Add assertions.
 bool test_kthreads(void)
 {
 	struct semaphore sem;
@@ -1430,6 +1433,7 @@ static void __test_kref_2(uint32_t srcid, long a0, long a1, long a2)
 }
 
 /* Runs a simple test between core 0 (caller) and core 2 */
+// TODO: I believe we need more assertions.
 bool test_kref(void)
 {
 	struct kref local_kref;
@@ -1451,6 +1455,7 @@ bool test_kref(void)
 	return true;
 }
 
+// TODO: Add more descriptive assertion messages.
 bool test_atomics(void)
 {
 	/* subtract_and_test */
@@ -1478,7 +1483,7 @@ bool test_atomics(void)
 
 	/* CAS */
 	/* Simple test, make sure the bool retval of CAS handles failure */
-	void test_cas_val(long init_val)
+	bool test_cas_val(long init_val)
 	{
 		atomic_t actual_num;
 		long old_num;
@@ -1492,12 +1497,16 @@ bool test_atomics(void)
 				old_num++;
 			attempt++;	
 		} while (!atomic_cas(&actual_num, old_num, old_num + 10));
-		if (atomic_read(&actual_num) != init_val + 10)
-			printk("FUCK, CAS test failed for %d\n", init_val);
+		if (atomic_read(&actual_num) != init_val + 10) {
+			return false;
+		} else {
+			return true;
+		}
 	}
-	test_cas_val(257);
-	test_cas_val(1);
-
+	KT_ASSERT_M("CAS test for 257 should be successful.",
+	            test_cas_val(257));
+	KT_ASSERT_M("CAS test for 1 should be successful.",
+	            test_cas_val(1));
 	return true;
 }
 
@@ -1515,6 +1524,7 @@ static void __test_try_halt(uint32_t srcid, long a0, long a1, long a2)
 /* x86 test, making sure our cpu_halt() and handle_irq() work.  If you want to
  * see it fail, you'll probably need to put a nop in the asm for cpu_halt(), and
  * comment out abort_halt() in handle_irq(). */
+// TODO: Add assertions.
 bool test_abort_halt(void)
 {
 #ifdef CONFIG_X86
@@ -1567,6 +1577,7 @@ void __test_cv_waiter_t3(uint32_t srcid, long a0, long a1, long a2)
 	atomic_dec(&counter);
 }
 
+// TODO: Add more assertions.
 bool test_cv(void)
 {
 	int nr_msgs;
@@ -1658,32 +1669,39 @@ bool test_memset(void)
 			printk("%04d: %02x\n", i, *c++);
 	}
 	
-	void check_array(char *c, char x, size_t len)
+	bool check_array(char *c, char x, size_t len)
 	{
 		for (int i = 0; i < len; i++) {
-			if (*c != x) {
-				printk("Char %d is %c (%02x), should be %c (%02x)\n", i, *c,
-				       *c, x, x);
-				break;
-			}
+			#define ASSRT_SIZE 64
+			char *assrt_msg = (char*) kmalloc(ASSRT_SIZE, 0);
+			snprintf(assrt_msg, ASSRT_SIZE, 
+				     "Char %d is %c (%02x), should be %c (%02x)", i, *c, *c,
+				     x, x);
+			KT_ASSERT_M(assrt_msg, (*c == x));
 			c++;
 		}
+		return true;
 	}
 	
-	void run_check(char *arr, int ch, size_t len)
+	bool run_check(char *arr, int ch, size_t len)
 	{
 		char *c = arr;
 		for (int i = 0; i < ARR_SZ; i++)
 			*c++ = 0x0;
 		memset(arr, ch, len - 4);
-		check_array(arr, ch, len - 4);
-		check_array(arr + len - 4, 0x0, 4);
+		if (check_array(arr, ch, len - 4) &&
+		    check_array(arr + len - 4, 0x0, 4)) {
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	char bytes[ARR_SZ];
-	run_check(bytes, 0xfe, 20);
-	run_check(bytes, 0xc0fe, 20);
-	printk("Done!\n");
+
+	if (!run_check(bytes, 0xfe, 20) || !run_check(bytes, 0xc0fe, 20)) {
+		return false;
+	}
 
 	return true;
 }
@@ -1697,6 +1715,7 @@ void __attribute__((noinline)) __longjmp_wrapper(struct jmpbuf* jb)
 	printk("Exiting: %s\n", __FUNCTION__); 
 }
 
+// TODO: Add assertions.
 bool test_setjmp()
 {
 	struct jmpbuf jb;
@@ -1713,6 +1732,7 @@ bool test_setjmp()
 	return true;
 }
 
+// TODO: add assertions.
 bool test_apipe(void)
 {
 	static struct atomic_pipe test_pipe;
@@ -1810,6 +1830,7 @@ bool test_apipe(void)
 
 static struct rwlock rwlock, *rwl = &rwlock;
 static atomic_t rwlock_counter;
+// TODO: Add assertions.
 bool test_rwlock(void)
 {
 	bool ret;
@@ -1894,6 +1915,7 @@ void __test_rv_sleeper_timeout(uint32_t srcid, long a0, long a1, long a2)
 	atomic_dec(&counter);
 }
 
+// TODO: Add more assertions.
 bool test_rv(void)
 {
 	int nr_msgs;
@@ -1949,6 +1971,7 @@ bool test_rv(void)
 }
 
 /* Cheap test for the alarm internal management */
+// TODO: Add assertions.
 bool test_alarm(void)
 {
 	uint64_t now = tsc2usec(read_tsc());
