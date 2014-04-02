@@ -29,19 +29,37 @@ function build_config() {
 	make ARCH=x86 defconfig
 }
 
+function add_cross_compiler_to_path() {
+	export PATH=$WORKSPACE/install/riscv-ros-gcc/bin:$PATH
+	export PATH=$WORKSPACE/install/i686-ros-gcc/bin:$PATH
+	export PATH=$WORKSPACE/install/x86_64-ros-gcc/bin:$PATH
+	export PATH=$WORKSPACE/install/x86_64-ros-gcc-native/bin:$PATH
+}
+
 function build_cross_compiler() {
 	cd tools/compilers/gcc-glibc
 
+	# Define cross compiler Makelocal.
 	echo "# Number of make jobs to spawn.  
-	MAKE_JOBS := 3
-	RISCV_INSTDIR         := $WORKSPACE/install/riscv-ros-gcc/
-	I686_INSTDIR          := $WORKSPACE/install/i686-ros-gcc/
-	X86_64_INSTDIR        := $WORKSPACE/install/x86_64-ros-gcc/
-	X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
-	" > Makelocal
+MAKE_JOBS := 3
+RISCV_INSTDIR         := $WORKSPACE/install/riscv-ros-gcc/
+I686_INSTDIR          := $WORKSPACE/install/i686-ros-gcc/
+X86_64_INSTDIR        := $WORKSPACE/install/x86_64-ros-gcc/
+X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
+" > Makelocal
 
-	cat Makelocal > ~/deleteme.txt
+	# Directories where the cross compiler will be installed.
+	mkdir -p $WORKSPACE/install/riscv-ros-gcc/
+	mkdir -p $WORKSPACE/install/i686-ros-gcc/
+	mkdir -p $WORKSPACE/install/x86_64-ros-gcc/
+	mkdir -p $WORKSPACE/install/x86_64-ros-gcc-native/
 
+	add_cross_compiler_to_path
+
+	# Compile cross compiler.
+	make x86_64
+
+	# Go back to root directory.
 	cd ../../..
 }
 
@@ -54,6 +72,7 @@ else
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
 
+	# TODO: If cross compiler need not be defined, still call add_cross_com...
 	# TODO: Compile only the rules needed
 fi
 
