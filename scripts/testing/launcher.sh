@@ -25,25 +25,31 @@ git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 ###############                COMPILATION BEGINS                ###############
 ################################################################################
 
-if [ -n "${COMPILE_ALL+1}" ]; then
-  echo "Building all"
-else
-  CHANGES=`$CHANGES_SCR $DIFF_FILE`
-  echo "Building " $CHANGES
-fi
+function build_config() {
+	make ARCH=x86 defconfig
+}
 
-echo $COMPILE_ALL
+function build_cross_compiler() {
+	cd tools/compilers/gcc-glibc
+
+	cp Makelocal.template Makelocal
+
+	cat Makelocal > ~/deleteme.txt
+
+	cd ../../..
+}
 
 if [ "$COMPILE_ALL" == true ]; then
-	echo "hei ho"
+	echo "Building all AKAROS"
+	# 1. 
+	build_config
+	build_cross_compiler
 else
-	echo "ho hei"
+	CHANGES=`$CHANGES_SCR $DIFF_FILE`
+	echo "Building "$CHANGES
+
+	# TODO: Compile only the rules needed
 fi
-
-# TODO: Compile only the rules needed
-# 1. 
-
-
 
 
 # TODO: Detect changes and fill TEST_NAMES and COMPILE_PARTS accordingly to the 
