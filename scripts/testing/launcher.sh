@@ -25,8 +25,13 @@ git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 ###############                COMPILATION BEGINS                ###############
 ################################################################################
 
-CHANGES=`$CHANGES_SCR $DIFF_FILE`
-echo $CHANGES
+if [ -n "${BUILD_ALL+1}" ]; then
+  echo "Building all"
+else
+  CHANGES=`$CHANGES_SCR $DIFF_FILE`
+  echo "Building " $CHANGES
+fi
+
 # TODO: Compile only the rules needed
 # 1. 
 
