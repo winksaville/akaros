@@ -32,7 +32,13 @@ function build_config() {
 function build_cross_compiler() {
 	cd tools/compilers/gcc-glibc
 
-	cp Makelocal.template Makelocal
+	echo "# Number of make jobs to spawn.  
+	MAKE_JOBS := 3
+	RISCV_INSTDIR         := $(WORKSPACE)/install/riscv-ros-gcc/
+	I686_INSTDIR          := $(WORKSPACE)/install/i686-ros-gcc/
+	X86_64_INSTDIR        := $(WORKSPACE)/install/x86_64-ros-gcc/
+	X86_64_NATIVE_INSTDIR := $(WORKSPACE)/install/x86_64-ros-gcc-native/
+	" > Makelocal
 
 	cat Makelocal > ~/deleteme.txt
 
