@@ -12,6 +12,12 @@ readonly CHANGES_SCR=$TEST_DIR/changes.py
 # Fill in new tests here
 readonly TEST_NAMES=( sampletest ) 
 
+
+# Create directory for tests and other temp files.
+mkdir -p $TMP_DIR
+mkdir -p $TEST_OUTPUT_DIR
+
+
 # Save changed files between last tested commit and current one.
 git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 
@@ -19,7 +25,7 @@ git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 ###############                COMPILATION BEGINS                ###############
 ################################################################################
 
-CHANGES=`$CHANGES_SCR`
+CHANGES=`$CHANGES_SCR $DIFF_FILE`
 echo $CHANGES
 # TODO: Compile only the rules needed
 # 1. 
@@ -33,8 +39,6 @@ echo $CHANGES
 
 
 
-# Create output directory for tests
-mkdir -p $TEST_OUTPUT_DIR
 
 # Run tests
 for TEST_NAME in "${TEST_NAMES[@]}"
