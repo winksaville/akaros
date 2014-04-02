@@ -3,6 +3,9 @@
 # to the repo. 
 # It analyzes what parts of the codebase have been modified, compiles everything
 # that is needed, and reports on the results. 
+
+set -e
+
 readonly TMP_DIR=tmp
 readonly DIFF_FILE=$TMP_DIR/changes.txt
 readonly TEST_OUTPUT_DIR=output-tests
@@ -61,6 +64,10 @@ X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
 
 	# Go back to root directory.
 	cd ../../..
+}
+
+function build_kernel() {
+	
 }
 
 if [ "$COMPILE_ALL" == true ]; then
