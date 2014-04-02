@@ -32,6 +32,14 @@ else
   echo "Building " $CHANGES
 fi
 
+print $COMPILE_ALL
+
+if [ $COMPILE_ALL ]; then
+	print "hei ho"
+else
+	print "ho hei"
+fi
+
 # TODO: Compile only the rules needed
 # 1. 
 
