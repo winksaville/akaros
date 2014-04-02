@@ -34,7 +34,7 @@ fi
 
 echo $COMPILE_ALL
 
-if [ $COMPILE_ALL ]; then
+if [ "$COMPILE_ALL" == true ]; then
 	echo "hei ho"
 else
 	echo "ho hei"
