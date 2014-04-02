@@ -25,7 +25,7 @@ git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 ###############                COMPILATION BEGINS                ###############
 ################################################################################
 
-if [ -n "${BUILD_ALL+1}" ]; then
+if [ -n "${COMPILE_ALL+1}" ]; then
   echo "Building all"
 else
   CHANGES=`$CHANGES_SCR $DIFF_FILE`
