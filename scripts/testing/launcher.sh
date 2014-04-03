@@ -57,8 +57,6 @@ X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
 	mkdir -p $WORKSPACE/install/x86_64-ros-gcc/
 	mkdir -p $WORKSPACE/install/x86_64-ros-gcc-native/
 
-	add_cross_compiler_to_path
-
 	# Compile cross compiler.
 	make x86_64
 
@@ -96,6 +94,7 @@ if [ "$COMPILE_ALL" == true ]; then
 	echo "Building all AKAROS"
 	build_config
 	# build_cross_compiler
+	add_cross_compiler_to_path
 	build_kernel
 	build_userspace
 	run_qemu > $TMP_DIR/log.txt
