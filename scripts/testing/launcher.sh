@@ -111,7 +111,11 @@ function build_userspace() {
 function run_qemu() {
 	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
 	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
-	make qemu
+	make qemu &
+	QEMU_PID=$!
+
+	sleep 60s
+	kill -10 $QEMU_PID
 }
 
 
@@ -123,7 +127,7 @@ if [ "$COMPILE_ALL" == true ]; then
 	add_cross_compiler_to_path
 	build_kernel
 	build_userspace
-	run_qemu > AKAROS_OUTPUT_FILE
+	run_qemu > $AKAROS_OUTPUT_FILE
 else
 	# Save changed files between last tested commit and current one.
 	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
@@ -132,6 +136,7 @@ else
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
 
+	run_qemu > $AKAROS_OUTPUT_FILE
 	# TODO: If cross compiler need not be defined, still call add_cross_com...
 	# TODO: Compile only the rules needed
 fi
