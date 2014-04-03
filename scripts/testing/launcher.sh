@@ -98,7 +98,7 @@ if [ "$COMPILE_ALL" == true ]; then
 	# build_cross_compiler
 	build_kernel
 	build_userspace
-	run_qemu
+	run_qemu > $TMP_DIR/log.txt
 else
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
