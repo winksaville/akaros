@@ -17,13 +17,27 @@ readonly CHANGES_SCR=$TEST_DIR/changes.py
 readonly TEST_NAMES=( sampletest ) 
 
 
-# Create directory for tests and other temp files.
-mkdir -p $TMP_DIR
-mkdir -p $TEST_OUTPUT_DIR
 
+################################################################################
+###############                   INITIAL SETUP                  ###############
+################################################################################
 
-# Save changed files between last tested commit and current one.
-git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
+if [ "$INITIAL_SETUP" == true ]; then
+	# Create directory for tests and other temp files.
+	mkdir -p $TMP_DIR
+	mkdir -p $TEST_OUTPUT_DIR
+
+	# Compile QEMU launcher
+	mkdir -p $WORKSPACE/install/qemu_launcher/
+	gcc scripts/testing/utils/qemu_launcher.c -o install/qemu_launcher/qemu_launcher
+
+	echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
+	echo "Set up finished succesfully."
+	echo "Please run sudo chmod 4755 scripts/testing/utils/qemu_launcher"
+	echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
+	echo ""
+	exit 0
+fi
 
 
 
@@ -95,13 +109,7 @@ function run_qemu() {
 	make qemu
 }
 
-if [ "$INITIAL_SETUP" == true ]; then
-	mkdir -p $WORKSPACE/install/qemu_launcher/
-	gcc scripts/testing/utils/qemu_launcher.c -o install/qemu_launcher/qemu_launcher
 
-	echo "Please run sudo chmod 4755 scripts/testing/utils/qemu_launcher"
-	exit 0
-fi
 
 if [ "$COMPILE_ALL" == true ]; then
 	echo "Building all AKAROS"
@@ -112,6 +120,10 @@ if [ "$COMPILE_ALL" == true ]; then
 	build_userspace
 	run_qemu > AKAROS_OUTPUT_FILE
 else
+	# Save changed files between last tested commit and current one.
+	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
+
+	# Extract build targets by parsing diff file.
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
 
