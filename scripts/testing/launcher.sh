@@ -91,8 +91,17 @@ function build_userspace() {
 
 function run_qemu() {
 	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
+	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
 	make qemu
 }
+
+if [ "$INITIAL_SETUP" == true ]; then
+	mkdir -p $WORKSPACE/install/qemu_launcher/
+	gcc scripts/testing/utils/qemu_launcher.c -o install/qemu_launcher/qemu_launcher
+
+	echo "Please run sudo chmod 4755 scripts/testing/utils/qemu_launcher"
+	exit 0
+fi
 
 if [ "$COMPILE_ALL" == true ]; then
 	echo "Building all AKAROS"
