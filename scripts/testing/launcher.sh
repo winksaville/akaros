@@ -12,7 +12,6 @@ readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt
 readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
 readonly CHANGES_SCR=$TEST_DIR/changes.py
-
 # Fill in new tests here
 readonly TEST_NAMES=( sampletest ) 
 
@@ -48,6 +47,11 @@ fi
 
 function build_config() {
 	make ARCH=x86 defconfig
+
+	# Enable postboot kernel tests to run.
+	# These don't take much to execute so we can run them always and just parse
+	# results if needed
+	echo "CONFIG_POSTBOOT_KERNEL_TESTING=y" >> .config
 }
 
 function add_cross_compiler_to_path() {
