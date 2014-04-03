@@ -106,7 +106,6 @@ else
 	# TODO: Compile only the rules needed
 fi
 
-
 # TODO: Detect changes and fill TEST_NAMES and COMPILE_PARTS accordingly to the 
 # ones needed
 
