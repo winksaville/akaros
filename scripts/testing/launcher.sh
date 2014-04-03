@@ -143,6 +143,7 @@ else
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
 
+	add_cross_compiler_to_path
 	run_qemu > $AKAROS_OUTPUT_FILE
 	# TODO: If cross compiler need not be defined, still call add_cross_com...
 	# TODO: Compile only the rules needed
