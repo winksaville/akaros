@@ -21,6 +21,7 @@
 #include <syscall.h>
 #include <kdebug.h>
 #include <kmalloc.h>
+#include <arch/mptables.h>
 
 taskstate_t RO ts;
 
@@ -32,10 +33,6 @@ pseudodesc_t idt_pd;
  * given IRQ.  Modification requires holding the lock (TODO: RCU) */
 struct irq_handler *irq_handlers[NUM_IRQS];
 spinlock_t irq_handler_wlock = SPINLOCK_INITIALIZER_IRQSAVE;
-
-/* Which pci devices hang off of which irqs */
-/* TODO: make this an array of SLISTs (pain from ioapic.c, etc...) */
-struct pci_device *irq_pci_map[NUM_IRQS] = {0};
 
 const char *x86_trapname(int trapno)
 {
@@ -119,6 +116,7 @@ void idt_init(void)
 	extern struct trapinfo trap_tbl_end[];
 	int i, trap_tbl_size = trap_tbl_end - trap_tbl;
 	extern void ISR_default(void);
+	extern void ISR_syscall(void);
 
 	/* set all to default, to catch everything */
 	for (i = 0; i < 256; i++)
@@ -130,7 +128,11 @@ void idt_init(void)
 	 * the idt[] */
 	for (i = 0; i < trap_tbl_size - 1; i++)
 		SETGATE(idt[trap_tbl[i].trapnumber], 0, GD_KT, trap_tbl[i].trapaddr, 0);
-
+	/* Sanity check */
+	assert((uintptr_t)ISR_syscall ==
+	       ((uintptr_t)idt[T_SYSCALL].gd_off_63_32 << 32 |
+	        (uintptr_t)idt[T_SYSCALL].gd_off_31_16 << 16 |
+	        (uintptr_t)idt[T_SYSCALL].gd_off_15_0));
 	/* turn on trap-based syscall handling and other user-accessible ints
 	 * DPL 3 means this can be triggered by the int instruction */
 	idt[T_SYSCALL].gd_dpl = SINIT(3);
@@ -160,18 +162,31 @@ void idt_init(void)
 
 	asm volatile("lidt %0" : : "m"(idt_pd));
 
-	// This will go away when we start using the IOAPIC properly
 	pic_remap();
+	pic_mask_all();
+
+#ifdef CONFIG_ENABLE_MPTABLES
+	int ncleft = MAX_NUM_CPUS;
+
+	ncleft = mpsinit(ncleft);
+	ncleft = mpacpi(ncleft);
+	printk("MP and ACPI found %d cores\n", MAX_NUM_CPUS - ncleft);
+
+	apiconline();
+	ioapiconline();
+#else
 	// set LINT0 to receive ExtINTs (KVM's default).  At reset they are 0x1000.
 	write_mmreg32(LAPIC_LVT_LINT0, 0x700);
-	// mask it to shut it up for now
-	mask_lapic_lvt(LAPIC_LVT_LINT0);
-	// and turn it on
 	lapic_enable();
-	/* register the generic timer_interrupt() handler for the per-core timers */
-	register_raw_irq(LAPIC_TIMER_DEFAULT_VECTOR, timer_interrupt, NULL);
-	/* register the kernel message handler */
-	register_raw_irq(I_KERNEL_MSG, handle_kmsg_ipi, NULL);
+	unmask_lapic_lvt(LAPIC_LVT_LINT0);
+#endif
+
+	/* the lapic IRQs need to be unmasked on a per-core basis */
+	register_irq(IdtLAPIC_TIMER, timer_interrupt, NULL,
+	             MKBUS(BusLAPIC, 0, 0, 0));
+	register_irq(IdtLAPIC_ERROR, handle_lapic_error, NULL,
+	             MKBUS(BusLAPIC, 0, 0, 0));
+	register_irq(I_KERNEL_MSG, handle_kmsg_ipi, NULL, MKBUS(BusIPI, 0, 0, 0));
 }
 
 static void handle_fperr(struct hw_trapframe *hw_tf)
@@ -432,74 +447,6 @@ void trap(struct hw_trapframe *hw_tf)
 	assert(0);
 }
 
-/* Tells us if an interrupt (trap_nr) came from the PIC or not */
-static bool irq_from_pic(uint32_t trap_nr)
-{
-	/* The 16 IRQs within the range [PIC1_OFFSET, PIC1_OFFSET + 15] came from
-	 * the PIC.  [32-47] */
-	if (trap_nr < PIC1_OFFSET)
-		return FALSE;
-	if (trap_nr > PIC1_OFFSET + 15)
-		return FALSE;
-	return TRUE;
-}
-
-/* Helper: returns TRUE if the irq is spurious.  Pass in the trap_nr, not the
- * IRQ number (trap_nr = PIC_OFFSET + irq) */
-static bool check_spurious_irq(uint32_t trap_nr)
-{
-#ifndef CONFIG_ENABLE_MPTABLES		/* TODO: our proxy for using the PIC */
-	/* the PIC may send spurious irqs via one of the chips irq 7.  if the isr
-	 * doesn't show that irq, then it was spurious, and we don't send an eoi.
-	 * Check out http://wiki.osdev.org/8259_PIC#Spurious_IRQs */
-	if ((trap_nr == PIC1_SPURIOUS) && !(pic_get_isr() & (1 << 7))) {
-		printd("Spurious PIC1 irq!\n");	/* want to know if this happens */
-		return TRUE;
-	}
-	if ((trap_nr == PIC2_SPURIOUS) && !(pic_get_isr() & (1 << 15))) {
-		printd("Spurious PIC2 irq!\n");	/* want to know if this happens */
-		/* for the cascaded PIC, we *do* need to send an EOI to the master's
-		 * cascade irq (2). */
-		pic_send_eoi(2);
-		return TRUE;
-	}
-	/* At this point, we know the PIC didn't send a spurious IRQ */
-	if (irq_from_pic(trap_nr))
-		return FALSE;
-#endif
-	/* Either way (with or without a PIC), we need to check the LAPIC.
-	 * FYI: lapic_spurious is 255 on qemu and 15 on the nehalem..  We actually
-	 * can set bits 4-7, and P6s have 0-3 hardwired to 0.  YMMV.
-	 *
-	 * The SDM recommends not using the spurious vector for any other IRQs (LVT
-	 * or IOAPIC RTE), since the handlers don't send an EOI.  However, our check
-	 * here allows us to use the vector since we can tell the diff btw a
-	 * spurious and a real IRQ. */
-	uint8_t lapic_spurious = read_mmreg32(LAPIC_SPURIOUS) & 0xff;
-	/* Note the lapic's vectors are not shifted by an offset. */
-	if ((trap_nr == lapic_spurious) && !lapic_get_isr_bit(lapic_spurious)) {
-		printk("Spurious LAPIC irq %d, core %d!\n", lapic_spurious, core_id());
-		lapic_print_isr();
-		return TRUE;
-	}
-	return FALSE;
-}
-
-/* Helper, sends an end-of-interrupt for the trap_nr (not HW IRQ number). */
-static void send_eoi(uint32_t trap_nr)
-{
-#ifndef CONFIG_ENABLE_MPTABLES		/* TODO: our proxy for using the PIC */
-	/* WARNING: this will break if the LAPIC requests vectors that overlap with
-	 * the PIC's range. */
-	if (irq_from_pic(trap_nr))
-		pic_send_eoi(trap_nr - PIC1_OFFSET);
-	else
-		lapic_send_eoi();
-#else
-	lapic_send_eoi();
-#endif
-}
-
 /* Note IRQs are disabled unless explicitly turned on.
  *
  * In general, we should only get trapno's >= PIC1_OFFSET (32).  Anything else
@@ -520,36 +467,26 @@ void handle_irq(struct hw_trapframe *hw_tf)
 	/* Coupled with cpu_halt() and smp_idle() */
 	abort_halt(hw_tf);
 	//if (core_id())
-	if (hw_tf->tf_trapno != LAPIC_TIMER_DEFAULT_VECTOR)	/* timer irq */
-	if (hw_tf->tf_trapno != 255) /* kmsg */
-	if (hw_tf->tf_trapno != 36)	/* serial */
+	if (hw_tf->tf_trapno != IdtLAPIC_TIMER)	/* timer irq */
+	if (hw_tf->tf_trapno != I_KERNEL_MSG)
+	if (hw_tf->tf_trapno != 65)	/* qemu serial tends to get this one */
 		printd("Incoming IRQ, ISR: %d on core %d\n", hw_tf->tf_trapno,
 		       core_id());
-	if (check_spurious_irq(hw_tf->tf_trapno))
-		goto out_no_eoi;
 	/* TODO: RCU read lock */
 	irq_h = irq_handlers[hw_tf->tf_trapno];
+	if (!irq_h || irq_h->check_spurious(hw_tf->tf_trapno))
+		goto out_no_eoi;
 	while (irq_h) {
 		irq_h->isr(hw_tf, irq_h->data);
 		irq_h = irq_h->next;
 	}
-
-	//lapic_print_isr();
-	//printk("LAPIC LINT0: %p\n", read_mmreg32(LAPIC_LVT_LINT0));
-	//printk("COM1, IIR %p\n", inb(0x3f8 + 2));
-	irq_h = irq_handlers[4 + 32];
-	while (irq_h) {
-		irq_h->isr(hw_tf, irq_h->data);
-		irq_h = irq_h->next;
-	}
-
 	// if we're a general purpose IPI function call, down the cpu_list
 	extern handler_wrapper_t handler_wrappers[NUM_HANDLER_WRAPPERS];
 	if ((I_SMP_CALL0 <= hw_tf->tf_trapno) &&
 	    (hw_tf->tf_trapno <= I_SMP_CALL_LAST))
 		down_checklist(handler_wrappers[hw_tf->tf_trapno & 0x0f].cpu_list);
 	/* Keep in sync with ipi_is_pending */
-	send_eoi(hw_tf->tf_trapno);
+	irq_handlers[hw_tf->tf_trapno]->eoi(hw_tf->tf_trapno);
 	/* Fall-through */
 out_no_eoi:
 	dec_irq_depth(pcpui);
@@ -562,41 +499,35 @@ out_no_eoi:
 	assert(0);
 }
 
-void register_raw_irq(unsigned int vector, isr_t handler, void *data)
+int register_irq(int irq, isr_t handler, void *irq_arg, uint32_t tbdf)
 {
 	struct irq_handler *irq_h;
+	int vector;
 	irq_h = kmalloc(sizeof(struct irq_handler), 0);
 	assert(irq_h);
-	spin_lock_irqsave(&irq_handler_wlock);
+	irq_h->dev_irq = irq;
+	irq_h->tbdf = tbdf;
+	vector = bus_irq_setup(irq_h);
+	if (vector == -1) {
+		kfree(irq_h);
+		return -1;
+	}
+	printd("IRQ %d, vector %d, type %s\n", irq, vector, irq_h->type);
+	assert(irq_h->check_spurious && irq_h->eoi);
 	irq_h->isr = handler;
-	irq_h->data = data;
+	irq_h->data = irq_arg;
+	irq_h->apic_vector = vector;
+	/* RCU write lock */
+	spin_lock_irqsave(&irq_handler_wlock);
 	irq_h->next = irq_handlers[vector];
 	wmb();	/* make sure irq_h is done before publishing to readers */
 	irq_handlers[vector] = irq_h;
 	spin_unlock_irqsave(&irq_handler_wlock);
-}
-
-void unregister_raw_irq(unsigned int vector, isr_t handler, void *data)
-{
-	/* TODO: RCU */
-	printk("Unregistering not supported\n");
-}
-
-int register_dev_irq(int irq, isr_t handler, void *irq_arg)
-{
-	register_raw_irq(KERNEL_IRQ_OFFSET + irq, handler, irq_arg);
-
-	/* TODO: whenever we sort out the ACPI/IOAPIC business, we'll probably want
-	 * a helper to reroute an irq? */
-#ifdef CONFIG_ENABLE_MPTABLES
-	/* TODO: this should be for any IOAPIC EOI, not just MPTABLES */
-	/* Just sending to core 0 for now */
-	ioapic_route_irq(irq, 0);
-#else
-	pic_unmask_irq(irq);
-	unmask_lapic_lvt(LAPIC_LVT_LINT0);
-	enable_irq();
-#endif
+	/* Most IRQs other than the BusIPI should need their irq unmasked.
+	 * Might need to pass the irq_h, in case unmask needs more info.
+	 * The lapic IRQs need to be unmasked on a per-core basis */
+	if (irq_h->unmask && strcmp(irq_h->type, "lapic"))
+		irq_h->unmask(irq_h, vector);
 	return 0;
 }
 

@@ -6,9 +6,7 @@
 
 #include <smp.h>
 
-#include <arch/mptables.h>
 #include <arch/pci.h>
-#include <arch/ioapic.h>
 #include <arch/console.h>
 #include <arch/perfmon.h>
 #include <arch/init.h>
@@ -31,7 +29,7 @@ static void irq_console(struct hw_trapframe *hw_tf, void *data)
 	/* Control code intercepts */
 	switch (c) {
 		case capchar2ctl('G'):
-			/* traditional 'shift-g', will put you in the monitor gracefully */
+			/* traditional 'ctrl-g', will put you in the monitor gracefully */
 			send_kernel_message(core_id(), __run_mon, 0, 0, 0, KMSG_ROUTINE);
 			return;
 		case capchar2ctl('Q'):
@@ -42,25 +40,38 @@ static void irq_console(struct hw_trapframe *hw_tf, void *data)
 		case capchar2ctl('B'):
 			/* backtrace / debugging for the core receiving the irq */
 			printk("\nForced trapframe and backtrace for core %d\n", core_id());
+			if (!hw_tf) {
+				printk("(no hw_tf, we probably polled the console)\n");
+				return;
+			}
 			print_trapframe(hw_tf);
 			backtrace_kframe(hw_tf);
 			return;
 	}
 	/* Do our work in an RKM, instead of interrupt context.  Note the RKM will
 	 * cast 'c' to a char. */
-	if (c == 'G')
-		send_kernel_message(core_id(), __run_mon, 0, 0, 0, KMSG_ROUTINE);
-	else
-		send_kernel_message(core_id(), __cons_add_char, (long)&cons_buf,
-		                    (long)c, 0, KMSG_ROUTINE);
+	send_kernel_message(core_id(), __cons_add_char, (long)&cons_buf, (long)c,
+	                    0, KMSG_ROUTINE);
+}
+
+static void cons_poller(void *arg)
+{
+	while (1) {
+		udelay_sched(10000);
+		irq_console(0, arg);
+	}
 }
 
 static void cons_irq_init(void)
 {
 	struct cons_dev *i;
 	/* Register interrupt handlers for all console devices */
-	SLIST_FOREACH(i, &cdev_list, next)
-		register_dev_irq(i->irq, irq_console, i);
+	SLIST_FOREACH(i, &cdev_list, next) {
+		register_irq(i->irq, irq_console, i, MKBUS(BusISA, 0, 0, 0));
+#ifdef CONFIG_POLL_CONSOLE
+		ktask("cons_poller", cons_poller, i);
+#endif /* CONFIG_POLL_CONSOLE */
+	}
 }
 
 void arch_init()
@@ -71,12 +82,6 @@ void arch_init()
 	asm volatile ("fninit");
 	save_fp_state(&x86_default_fpu); /* used in arch/trap.h for fpu init */
 	pci_init();
-#ifdef CONFIG_ENABLE_MPTABLES
-	mptables_parse();
-	ioapic_init(); // MUST BE AFTER PCI/ISA INIT!
-	// TODO: move these back to regular init.  requires fixing the 
-	// CONFIG_NETWORKING inits to not need multiple cores running.
-#endif
 	// this returns when all other cores are done and ready to receive IPIs
 	#ifdef CONFIG_SINGLE_CORE
 		smp_percpu_init();
@@ -84,37 +89,6 @@ void arch_init()
 		smp_boot();
 	#endif
 	proc_init();
-
-	/* EXPERIMENTAL NETWORK FUNCTIONALITY
-	 * To enable, define CONFIG_NETWORKING in your Makelocal
-	 * If enabled, will load the rl8168 driver (if device exists)
-	 * and will a boot into userland matrix, so remote syscalls can be performed.
- 	 * If in simulation, will do some debugging information with the ne2k device
-	 *
-	 * Note: If you use this, you should also define the mac address of the 
-	 * teathered machine via USER_MAC_ADDRESS in Makelocal.
-	 *
-	 * Additionally, you should have a look at the syscall server in the tools directory
-	 */
-	#ifdef CONFIG_NETWORKING
-	#ifdef CONFIG_SINGLE_CORE
-		warn("You currently can't have networking if you boot into single core mode!!\n");
-	#else
-		/* TODO: use something like linux's device_init() to call these. */
-		#ifdef CONFIG_RL8168
-		extern void rl8168_init(void);		
-		rl8168_init();		
-		#endif
-		#ifdef CONFIG_NE2K
-		extern void ne2k_init(void);		
-		ne2k_init();
-		#endif
-		#ifdef CONFIG_E1000
-		extern void e1000_init(void);		
-		e1000_init();
-		#endif
-	#endif // CONFIG_SINGLE_CORE
-	#endif // CONFIG_NETWORKING
 
 	perfmon_init();
 	cons_irq_init();

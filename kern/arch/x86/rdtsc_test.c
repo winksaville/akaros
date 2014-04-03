@@ -296,6 +296,7 @@
 #include <arch/arch.h>
 #include <stdio.h>
 #include <kmalloc.h>
+#include <time.h>
 
 #define STAT_SIZE_DEF 10000
 #define LOOP_BOUND_DEF 1000

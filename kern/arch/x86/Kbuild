@@ -1,17 +1,21 @@
 obj-y						+= apic.o
+obj-y						+= apic9.o
 obj-y						+= colored_caches.o
 obj-y						+= console.o
 obj-y						+= cpuinfo.o
+obj-y						+= devarch.o
 obj-y						+= entry$(BITS).o
-#obj-y						+= emulate.o
 obj-y						+= frontend.o
 obj-y						+= init.o
 obj-y						+= ioapic.o
 obj-y						+= kclock.o
 obj-y						+= kdebug.o
-obj-y						+= mptables.o
+obj-y						+= mpacpi.o
+obj-y						+= mp.o
+obj-y						+= msi.o
 obj-y						+= page_alloc.o
 obj-y						+= pci.o
+obj-y						+= pic.o
 obj-y						+= perfmon.o
 obj-y						+= pmap.o pmap$(BITS).o
 obj-y						+= process$(BITS).o
@@ -20,7 +24,11 @@ obj-y						+= setjmp$(BITS).o
 obj-y						+= smp.o
 obj-y						+= smp_boot.o
 obj-y						+= smp_entry$(BITS).o
+obj-y						+= time.o
 obj-y						+= trap.o trap$(BITS).o
 obj-y						+= trapentry$(BITS).o
-#obj-y						+= vmx.o
-#obj-y						+= vmx_mmu.o
+
+# Virtual machine support. Optional.
+obj-$(CONFIG_VM)				+= emulate.o
+obj-$(CONFIG_VM)				+= vmx.o
+obj-$(CONFIG_VM)				+= vmx_mmu.o

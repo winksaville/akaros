@@ -961,7 +961,7 @@ struct etherpkt {
 };
 // INFERNO
 enum {
-	MaxEther = 4,
+	MaxEther = 32,
 	MaxFID = 16,
 	Ntypes = 8,
 };
@@ -999,6 +999,9 @@ struct ether {
 
 	/* another case where we wish we had anon struct members. */
 	struct netif netif;
+
+	/* xxxx -- this is a defect in this implementation. */
+	unsigned int tbdf;
 };
 
 extern struct block *etheriq(struct ether *, struct block *, int);

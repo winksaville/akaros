@@ -16,6 +16,9 @@
 /* List of all discovered devices */
 struct pcidev_stailq pci_devices = STAILQ_HEAD_INITIALIZER(pci_devices);
 
+/* PCI accesses are two-stage PIO, which need to complete atomically */
+spinlock_t pci_lock = SPINLOCK_INITIALIZER_IRQSAVE;
+
 static char STD_PCI_DEV[] = "Standard PCI Device";
 static char PCI2PCI[] = "PCI-to-PCI Bridge";
 static char PCI2CARDBUS[] = "PCI-Cardbus Bridge";
@@ -27,7 +30,7 @@ uint32_t pci_membar_get_sz(struct pci_device *pcidev, int bar)
 {
 	/* save the old value, write all 1s, invert, add 1, restore.
 	 * http://wiki.osdev.org/PCI for details. */
-	uint8_t bar_off = PCI_BAR0_STD + bar * PCI_BAR_OFF;
+	uint32_t bar_off = PCI_BAR0_STD + bar * PCI_BAR_OFF;
 	uint32_t old_val = pcidev_read32(pcidev, bar_off);
 	uint32_t retval;
 	pcidev_write32(pcidev, bar_off, 0xffffffff);
@@ -78,6 +81,42 @@ static void pci_handle_bars(struct pci_device *pcidev)
 	}
 }
 
+static void pci_parse_caps(struct pci_device *pcidev)
+{
+	uint32_t cap_off;	/* not sure if this can be extended from u8 */
+	uint8_t cap_id;
+	if (!(pcidev_read16(pcidev, PCI_STATUS_REG) & (1 << 4)))
+		return;
+	switch (pcidev_read8(pcidev, PCI_HEADER_REG) & 0x7f) {
+		case 0:				/* etc */
+		case 1:				/* pci to pci bridge */
+			cap_off = 0x34;
+			break;
+		case 2:				/* cardbus bridge */
+			cap_off = 0x14;
+			break;
+		default:
+			return;
+	}
+	/* initial offset points to the addr of the first cap */
+	cap_off = pcidev_read8(pcidev, cap_off);
+	cap_off &= ~0x3;	/* osdev says the lower 2 bits are reserved */
+	while (cap_off) {
+		cap_id = pcidev_read8(pcidev, cap_off);
+		if (cap_id > PCI_CAP_ID_MAX) {
+			printk("PCI %x:%x:%x had bad cap 0x%x\n", pcidev->bus, pcidev->dev,
+			       pcidev->func, cap_id);
+			return;
+		}
+		pcidev->caps[cap_id] = cap_off;
+		cap_off = pcidev_read8(pcidev, cap_off + 1);
+		/* not sure if subsequent caps must be aligned or not */
+		if (cap_off & 0x3)
+			printk("PCI %x:%x:%x had unaligned cap offset 0x%x\n", pcidev->bus,
+			       pcidev->dev, pcidev->func, cap_off);
+	}
+}
+
 /* Scans the PCI bus.  Won't actually work for anything other than bus 0, til we
  * sort out how to handle bridge devices. */
 void pci_init(void) {
@@ -110,12 +149,6 @@ void pci_init(void) {
 				pcidev->irqline = pcidev_read8(pcidev, PCI_IRQLINE_STD);
 				/* This is the interrupt pin the device uses (INTA# - INTD#) */
 				pcidev->irqpin = pcidev_read8(pcidev, PCI_IRQPIN_STD);
-				if (pcidev->irqpin != PCI_NOINT) {
-					/* TODO: use a list (check for collisions for now) (massive
-					 * collisions on a desktop with bridge IRQs. */
-					//assert(!irq_pci_map[pcidev->irqline]);
-					irq_pci_map[pcidev->irqline] = pcidev;
-				}
 				/* bottom 7 bits are header type */
 				switch (pcidev_read8(pcidev, PCI_HEADER_REG) & 0x7c) {
 					case 0x00:
@@ -131,6 +164,7 @@ void pci_init(void) {
 						pcidev->header_type = "Unknown Header Type";
 				}
 				pci_handle_bars(pcidev);
+				pci_parse_caps(pcidev);
 				STAILQ_INSERT_TAIL(&pci_devices, pcidev, all_dev);
 				#ifdef CONFIG_PCI_VERBOSE
 				pcidev_print_info(pcidev, 4);
@@ -150,104 +184,115 @@ void pci_init(void) {
 	}
 }
 
-uint32_t pci_config_addr(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg)
+uint32_t pci_config_addr(uint8_t bus, uint8_t dev, uint8_t func, uint32_t reg)
 {
 	return (uint32_t)(((uint32_t)bus << 16) |
 	                  ((uint32_t)dev << 11) |
 	                  ((uint32_t)func << 8) |
-	                  (reg & 0xfc) | 0x80000000);
+	                  (reg & 0xfc) |
+	                  ((reg & 0xf00) << 16) |	/* extended PCI CFG space... */
+					  0x80000000);
 }
 
 /* Helper to read 32 bits from the config space of B:D:F.  'Offset' is how far
  * into the config space we offset before reading, aka: where we are reading. */
-uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset)
+uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset)
 {
-	/* Send type 1 requests for everything beyond bus 0.  Note this does nothing
-	 * until we configure the PCI bridges (which we don't do yet). */
-	if (bus !=  0)
-		offset |= 0x1;
+	uint32_t ret;
+	spin_lock_irqsave(&pci_lock);
 	outl(PCI_CONFIG_ADDR, pci_config_addr(bus, dev, func, offset));
-	return inl(PCI_CONFIG_DATA);
+	ret = inl(PCI_CONFIG_DATA);
+	spin_unlock_irqsave(&pci_lock);
+	return ret;
 }
 
 /* Same, but writes (doing 32bit at a time).  Never actually tested (not sure if
  * PCI lets you write back). */
-void pci_write32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset,
+void pci_write32(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset,
                  uint32_t value)
 {
+	spin_lock_irqsave(&pci_lock);
 	outl(PCI_CONFIG_ADDR, pci_config_addr(bus, dev, func, offset));
 	outl(PCI_CONFIG_DATA, value);
+	spin_unlock_irqsave(&pci_lock);
 }
 
-/* Helper to read from a specific device's config space. */
-uint32_t pcidev_read32(struct pci_device *pcidev, uint8_t offset)
+uint16_t pci_read16(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset)
+{
+	uint16_t ret;
+	spin_lock_irqsave(&pci_lock);
+	outl(PCI_CONFIG_ADDR, pci_config_addr(bus, dev, func, offset));
+	ret = inw(PCI_CONFIG_DATA + (offset & 2));
+	spin_unlock_irqsave(&pci_lock);
+	return ret;
+}
+
+void pci_write16(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset,
+                 uint16_t value)
+{
+	spin_lock_irqsave(&pci_lock);
+	outl(PCI_CONFIG_ADDR, pci_config_addr(bus, dev, func, offset));
+	outw(PCI_CONFIG_DATA + (offset & 2), value);
+	spin_unlock_irqsave(&pci_lock);
+}
+
+uint8_t pci_read8(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset)
+{
+	uint8_t ret;
+	spin_lock_irqsave(&pci_lock);
+	outl(PCI_CONFIG_ADDR, pci_config_addr(bus, dev, func, offset));
+	ret = inb(PCI_CONFIG_DATA + (offset & 3));
+	spin_unlock_irqsave(&pci_lock);
+	return ret;
+}
+
+void pci_write8(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset,
+                uint8_t value)
+{
+	spin_lock_irqsave(&pci_lock);
+	outl(PCI_CONFIG_ADDR, pci_config_addr(bus, dev, func, offset));
+	outb(PCI_CONFIG_DATA + (offset & 3), value);
+	spin_unlock_irqsave(&pci_lock);
+}
+
+uint32_t pcidev_read32(struct pci_device *pcidev, uint32_t offset)
 {
 	return pci_read32(pcidev->bus, pcidev->dev, pcidev->func, offset);
 }
 
-/* Helper to write to a specific device */
-void pcidev_write32(struct pci_device *pcidev, uint8_t offset, uint32_t value)
+void pcidev_write32(struct pci_device *pcidev, uint32_t offset, uint32_t value)
 {
 	pci_write32(pcidev->bus, pcidev->dev, pcidev->func, offset, value);
 }
 
-/* For the 16 and 8 functions, we need to access on 32 bit alignments, then
- * figure out which byte/word we need to read/write.  & 0xfc will give us the 4
- * byte aligned offset to access in PCI space.  & 0x3 will give the offset
- * within the 32 bits (number of bytes).  When writing, we also need to x-out
- * any existing values (and not just |=). */
-
-/* Returns the 32-bit addr/offset needed to access 'offset'. */
-static inline uint8_t __pci_off32(uint8_t offset)
+uint16_t pcidev_read16(struct pci_device *pcidev, uint32_t offset)
 {
-	return offset & 0xfc;
+	return pci_read16(pcidev->bus, pcidev->dev, pcidev->func, offset);
 }
 
-/* Returns the number of bits needed to shift to get the offset's spot in a 32
- * bit config register. */
-static inline uint8_t __pci_shift_for(uint8_t offset)
+void pcidev_write16(struct pci_device *pcidev, uint32_t offset, uint16_t value)
 {
-	return (offset & 0x3) * 8;
+	pci_write16(pcidev->bus, pcidev->dev, pcidev->func, offset, value);
 }
 
-uint16_t pcidev_read16(struct pci_device *pcidev, uint8_t offset)
+uint8_t pcidev_read8(struct pci_device *pcidev, uint32_t offset)
 {
-	uint32_t retval = pcidev_read32(pcidev, __pci_off32(offset));
-	/* 0x2 would work here, since offset & 0x3 should be 0 or 2 */
-	retval >>= __pci_shift_for(offset);
-	return (uint16_t)(retval & 0xffff);
+	return pci_read8(pcidev->bus, pcidev->dev, pcidev->func, offset);
 }
 
-void pcidev_write16(struct pci_device *pcidev, uint8_t offset, uint16_t value)
+void pcidev_write8(struct pci_device *pcidev, uint32_t offset, uint8_t value)
 {
-	uint32_t readval = pcidev_read32(pcidev, __pci_off32(offset));
-	uint32_t writeval = (uint32_t)value << __pci_shift_for(offset);
-	readval &= ~(0xffff << __pci_shift_for(offset));
-	pcidev_write32(pcidev, __pci_off32(offset), readval | writeval);
-}
-
-uint8_t pcidev_read8(struct pci_device *pcidev, uint8_t offset)
-{
-	uint32_t retval = pcidev_read32(pcidev, __pci_off32(offset));
-	retval >>= __pci_shift_for(offset);
-	return (uint8_t)(retval & 0xff);
-}
-
-void pcidev_write8(struct pci_device *pcidev, uint8_t offset, uint8_t value)
-{
-	uint32_t readval = pcidev_read32(pcidev, __pci_off32(offset));
-	uint32_t writeval = (uint32_t)value << __pci_shift_for(offset);
-	readval &= ~(0xff << __pci_shift_for(offset));
-	pcidev_write32(pcidev, __pci_off32(offset), readval | writeval);
+	pci_write8(pcidev->bus, pcidev->dev, pcidev->func, offset, value);
 }
 
 /* Gets any old raw bar, with some catches based on type. */
 uint32_t pci_getbar(struct pci_device *pcidev, unsigned int bar)
 {
-	uint32_t type;
+	uint8_t type;
 	if (bar >= MAX_PCI_BAR)
 		panic("Nonexistant bar requested!");
 	type = pcidev_read8(pcidev, PCI_HEADER_REG);
+	type &= ~0x80;	/* drop the MF bit */
 	/* Only types 0 and 1 have BARS */
 	if ((type != 0x00) && (type != 0x01))
 		return 0;
@@ -390,10 +435,52 @@ void pcidev_print_info(struct pci_device *pcidev, int verbosity)
 			}
 		}
 	}
+	printk("\tCapabilities:");
+	for (int i = 0; i < PCI_CAP_ID_MAX + 1; i++) {
+		if (pcidev->caps[i])
+			printk(" 0x%02x", i);
+	}
+	printk("\n");
 }
 
 void pci_set_bus_master(struct pci_device *pcidev)
 {
 	pcidev_write16(pcidev, PCI_CMD_REG, pcidev_read16(pcidev, PCI_CMD_REG) |
 	                                    PCI_CMD_BUS_MAS);
+}
+
+void pci_clr_bus_master(struct pci_device *pcidev)
+{
+	uint16_t reg;
+	reg = pcidev_read16(pcidev, PCI_CMD_REG);
+	reg &= ~PCI_CMD_BUS_MAS;
+	pcidev_write16(pcidev, PCI_CMD_REG, reg);
+}
+
+/* Find up to 'need' unused bars. Needed for MSI-X */
+int pci_find_unused_bars(struct pci_device *dev, int *bars, int need)
+{
+	int i, found;
+	for(i = found = 0; found < need && i < ARRAY_SIZE(dev->bar); i++)
+		if (!dev->bar[i].raw_bar)
+			bars[found++] = i;
+	return found;
+
+}
+
+struct pci_device *pci_match_tbdf(int tbdf)
+{
+	struct pci_device *search;
+	int bus, dev, func;
+	bus = BUSBNO(tbdf);
+	dev = BUSDNO(tbdf);
+	func = BUSFNO(tbdf);
+
+	STAILQ_FOREACH(search, &pci_devices, all_dev) {
+		if ((search->bus == bus) &&
+		    (search->dev == dev) &&
+		    (search->func == func))
+			return search;
+	}
+	return NULL;
 }

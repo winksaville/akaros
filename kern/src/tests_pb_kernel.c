@@ -24,7 +24,6 @@
 #include <string.h>
 #include <testing.h>
 #include <trap.h>
-#include <trap.h>
 #include <process.h>
 #include <syscall.h>
 #include <time.h>
@@ -59,7 +58,8 @@ bool test_ipi_sending(void)
 {
 	int8_t state = 0;
 
-	register_raw_irq(I_TESTING, test_hello_world_handler, NULL);
+	register_irq(I_TESTING, test_hello_world_handler, NULL,
+	             MKBUS(BusIPI, 0, 0, 0));
 	enable_irqsave(&state);
 	cprintf("\nCORE 0 sending broadcast\n");
 	send_broadcast_ipi(I_TESTING);
@@ -98,9 +98,10 @@ bool test_ipi_sending(void)
 // Note this never returns and will muck with any other timer work
 bool test_pic_reception(void)
 {
-	register_raw_irq(0x20, test_hello_world_handler, NULL);
+	register_irq(IdtPIC + IrqCLOCK, test_hello_world_handler, NULL,
+	             MKBUS(BusISA, 0, 0, 0));
 	pit_set_timer(100,TIMER_RATEGEN); // totally arbitrary time
-	pic_unmask_irq(0);
+	pic_unmask_irq(0, 0);
 	cprintf("PIC1 Mask = 0x%04x\n", inb(PIC1_DATA));
 	cprintf("PIC2 Mask = 0x%04x\n", inb(PIC2_DATA));
 	unmask_lapic_lvt(LAPIC_LVT_LINT0);
@@ -114,15 +115,22 @@ bool test_pic_reception(void)
 // TODO: Add assertions.
 bool test_ioapic_pit_reroute(void) 
 {
-	register_raw_irq(0x20, test_hello_world_handler, NULL);
-	ioapic_route_irq(0, 3);	
+	register_irq(IdtPIC + IrqCLOCK, test_hello_world_handler, NULL,
+	             MKBUS(BusISA, 0, 0, 0));
+#ifdef CONFIG_ENABLE_MPTABLES
+#warning "not routing the irq"
+	//ioapic_route_irq(0, 3);	
+#endif
 
 	cprintf("Starting pit on core 3....\n");
 	udelay(3000000);
 	pit_set_timer(0xFFFE,TIMER_RATEGEN); // totally arbitrary time
 	
 	udelay(3000000);
-	ioapic_unroute_irq(0);
+#ifdef CONFIG_ENABLE_MPTABLES
+#warning "NOT unrouting the irq"
+	//ioapic_unroute_irq(0);
+#endif
 	udelay(300000);
 	cprintf("Masked pit. Waiting before return...\n");
 	udelay(3000000);
@@ -584,7 +592,8 @@ bool test_smp_call_functions(void)
 // TODO: Fix the KT_ASSERTs
 bool test_lapic_status_bit(void)
 {
-	register_raw_irq(I_TESTING, test_incrementer_handler, &a);
+	register_irq(I_TESTING, test_incrementer_handler, &a,
+	             MKBUS(BusIPI, 0, 0, 0));
 	#define NUM_IPI 100000
 	atomic_set(&a,0);
 	printk("IPIs received (should be 0): %d\n", a);
@@ -691,7 +700,8 @@ bool test_pit(void)
 
 	atomic_t waiting;
 	atomic_init(&waiting, 1);
-	register_raw_irq(I_TESTING, test_waiting_handler, &waiting);
+	register_irq(I_TESTING, test_waiting_handler, &waiting,
+	             MKBUS(BusIPI, 0, 0, 0));
 	while(atomic_read(&waiting))
 		cpu_relax();
 	cprintf("End now\n");

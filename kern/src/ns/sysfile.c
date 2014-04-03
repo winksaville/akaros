@@ -51,6 +51,14 @@ int newfd(struct chan *c)
 	 * know if we closed anything.  Since we share the FD numbers with the VFS,
 	 * there is no way to know that. */
 	i = get_fd(&current->open_files, 0);
+	while (i >= f->nfd) {
+		if (growfd(f, i) < 0) {
+			spin_unlock(&f->lock);
+			exhausted("file descriptors");
+			return -1;
+		}
+		cpu_relax();
+	}
 	assert(f->fd[i] == 0);
 #if 0	// 9ns style
 	/* TODO: use a unique integer allocator */
@@ -428,13 +436,13 @@ int syspipe(int fd[2])
 			cclose(c[1]);
 		if (fd[0] >= 0) {
 			/* VFS hack */
-			put_fd(&current->open_files, fd[0]);
 			f->fd[fd[0]] = 0;
+			put_fd(&current->open_files, fd[0]);
 		}
 		if (fd[1] >= 0) {
 			/* VFS hack */
-			put_fd(&current->open_files, fd[1]);
 			f->fd[fd[1]] = 0;
+			put_fd(&current->open_files, fd[1]);
 		}
 		poperror();
 		return -1;
@@ -1421,7 +1429,7 @@ int plan9setup(struct proc *new_proc, struct proc *parent)
 	}
 	/* Copy semantics: do not change this without revisiting proc_destroy,
 	 * close_9ns_files, and closefgrp. */
-	new_proc->fgrp = dupfgrp(parent->fgrp);
+	new_proc->fgrp = dupfgrp(new_proc, parent->fgrp);
 	/* Shared semantics */
 	kref_get(&parent->pgrp->ref, 1);
 	new_proc->pgrp = parent->pgrp;

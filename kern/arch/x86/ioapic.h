@@ -1,58 +1,66 @@
-/*
- * Copyright (c) 2009 The Regents of the University of California
- * See LICENSE for details.
+/* 
+ * This file is part of the UCB release of Plan 9. It is subject to the license
+ * terms in the LICENSE file found in the top-level directory of this
+ * distribution and at http://akaros.cs.berkeley.edu/files/Plan9License. No
+ * part of the UCB release of Plan 9, including this file, may be copied,
+ * modified, propagated, or distributed except according to the terms contained
+ * in the LICENSE file.
  */
 
 #ifndef ROS_KERN_IOAPIC_H
 #define ROS_KERN_IOAPIC_H
 
-#include <ros/common.h>
+#include <atomic.h>
+#include <arch/apic.h>
 
-/* Physical address of the IOAPIC, can be changed.  Currently, it's mapped at
- * the VADDR IOAPIC_BASE */
-#define IOAPIC_PBASE				0xfec00000 /* default *physical* address */
+enum {
+	MaxAPICNO	= 254,		/* 255 is physical broadcast */
+};
 
-/* These are things like level sensitive, edge triggered, fixed, nmi, extint, etc
- * This is based on the x58 chipset spec. There are only 2 combinations so
- * Paul didn't bother to spell them out bit by bit and or them together.
+enum {					/* I/O APIC registers */
+	IoapicID	= 0x00,		/* ID */
+	IoapicVER	= 0x01,		/* version */
+	IoapicARB	= 0x02,		/* arbitration ID */
+	IoapicRDT	= 0x10,		/* redirection table */
+};
+
+/*
+ * Common bits for
+ *	I/O APIC Redirection Table Entry;
+ *	Local APIC Local Interrupt Vector Table;
+ *	Local APIC Inter-Processor Interrupt;
+ *	Local APIC Timer Vector Table.
  */
-#define IOAPIC_PCI_FLAGS			0xa0
-#define IOAPIC_ISA_FLAGS			0x00
-/* This says how we should treat PCI interrupts that are listed as ISA by mptables.
- * This was determined by trial and error in the VM's. All current VMs that have this
- * 'feature' use ISA style flags. 
- * Author's note: Paul really hates whoever wrote the bochs bios (which is
- * the source of this problem for bochs/kvm/qemu).
- */
-#define IOAPIC_BROKEN_PCI_FLAGS		IOAPIC_ISA_FLAGS 
+enum {
+	ApicFIXED	= 0x00000000,	/* [10:8] Delivery Mode */
+	ApicLOWEST	= 0x00000100,	/* Lowest priority */
+	ApicSMI		= 0x00000200,	/* System Management Interrupt */
+	ApicRR		= 0x00000300,	/* Remote Read */
+	ApicNMI		= 0x00000400,
+	ApicINIT	= 0x00000500,	/* INIT/RESET */
+	ApicSTARTUP	= 0x00000600,	/* Startup IPI */
+	ApicExtINT	= 0x00000700,
 
-// Obvious
-#define IOAPIC_MAX_ID				256
+	ApicPHYSICAL	= 0x00000000,	/* [11] Destination Mode (RW) */
+	ApicLOGICAL	= 0x00000800,
 
-// The magic bits we write to kill unroute an irq. The 16th bit is the important one, being set to 1. 
-// Other bits are just to restore it to a clean boot-like state.
-#define IOAPIC_UNROUTE_LOW			0x00010000
-#define IOAPIC_UNROUTE_HIGH			0x00000000
+	ApicDELIVS	= 0x00001000,	/* [12] Delivery Status (RO) */
+	ApicHIGH	= 0x00000000,	/* [13] Interrupt Input Pin Polarity (RW) */
+	ApicLOW		= 0x00002000,
+	ApicRemoteIRR	= 0x00004000,	/* [14] Remote IRR (RO) */
+	ApicEDGE	= 0x00000000,	/* [15] Trigger Mode (RW) */
+	ApicLEVEL	= 0x00008000,
+	ApicIMASK	= 0x00010000,	/* [16] Interrupt Mask */
+	IOAPIC_PBASE    = 0xfec00000, /* default *physical* address */
+};
 
-// Mem mapped register magic numbers. Oo magic!
-#define IOAPIC_REDIRECT_OFFSET		0x10
-#define IOAPIC_WRITE_WINDOW_OFFSET	0x10
+extern int mpisabusno;
 
-/* Structure used to define an interrupt redirection entry. 
- * This structure encapsulates:
- * 		An IRQ
- *		The flags used for rerouting (edge sensitive, level triggered, etc)
- * 		Ioapic ADDR (physical Addr)
- */
-typedef struct IOAPICREDIRECT {
-    uintptr_t		ioapic_address; /* 0 means invalid */
-	uint8_t			ioapic_flags;
-	uint8_t			ioapic_int;
-} ioapic_redirect_t;
-
-// Everyone loves a protoype.
-void ioapic_init();
-void ioapic_route_irq(uint8_t irq, uint8_t dest);
-void ioapic_unroute_irq(uint8_t irq);
+void ioapicintrinit(int busno, int apicno, int intin, int devno, int lo);
+void ioapiconline(void);
+void ioapicinit(int id, int ibase, uintptr_t pa);
+void ioapicrdtr(struct apic*, int unused_int, int*, int*);
+void ioapicrdtw(struct apic*, int unused_int, int, int);
+char *ioapicdump(char *start, char *end);
 
 #endif /* ROS_KERN_IOAPIC_H */

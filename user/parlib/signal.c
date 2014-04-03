@@ -41,26 +41,22 @@ static struct sigaction sigactions[_NSIG - 1];
  * the definitive source, but this will have to do for now.
  * http://unix.stackexchange.com/questions/99112/default-exit-code-when-process-is-terminated
  * */
-static void default_ignr_handler(int signr)
-{
-	/* Do nothing. We are ingoring the signal after all! */
-}
 static void default_term_handler(int signr)
 {
 	ros_syscall(SYS_proc_destroy, __procinfo.pid, signr, 0, 0, 0, 0);
 }
 static void default_core_handler(int signr)
 {
-	fprintf(stderr, "Segmentation Fault (sorry, no core dump yet)");
+	fprintf(stderr, "Segmentation Fault (sorry, no core dump yet)\n");
 	default_term_handler((1 << 7) + signr);
 }
 static void default_stop_handler(int signr)
 {
-	fprintf(stderr, "Stop signal received!  No support to stop yet though!");
+	fprintf(stderr, "Stop signal received!  No support to stop yet though!\n");
 }
 static void default_cont_handler(int signr)
 {
-	fprintf(stderr, "Cont signal received!  No support to cont yet though!");
+	fprintf(stderr, "Cont signal received!  No support to cont yet though!\n");
 }
 static __sighandler_t default_handlers[] = {
 	[SIGHUP]    = default_term_handler, 
@@ -80,33 +76,29 @@ static __sighandler_t default_handlers[] = {
 	[SIGALRM]   = default_term_handler, 
 	[SIGTERM]   = default_term_handler, 
 	[SIGSTKFLT] = default_term_handler, 
-	[SIGCHLD]   = default_ignr_handler, 
+	[SIGCHLD]   = SIG_IGN, 
 	[SIGCONT]   = default_cont_handler, 
 	[SIGSTOP]   = default_stop_handler, 
 	[SIGTSTP]   = default_stop_handler, 
 	[SIGTTIN]   = default_stop_handler, 
 	[SIGTTOU]   = default_stop_handler, 
 	[SIGURG]    = default_term_handler, 
-	[SIGXCPU]   = default_ignr_handler, 
+	[SIGXCPU]   = SIG_IGN, 
 	[SIGXFSZ]   = default_core_handler, 
 	[SIGVTALRM] = default_term_handler, 
 	[SIGPROF]   = default_term_handler, 
-	[SIGWINCH]  = default_ignr_handler, 
+	[SIGWINCH]  = SIG_IGN, 
 	[SIGIO]     = default_term_handler, 
-	[SIGPWR]    = default_ignr_handler, 
+	[SIGPWR]    = SIG_IGN, 
 	[SIGSYS]    = default_core_handler
 };
 
-/* This is the catch all akaros event->posix signal handler.  All posix signals
- * are received in a single akaros event type.  They are then dispatched from
+
+/* This is the akaros posix signal trigger.  Signals are dispatched from
  * this function to their proper posix signal handler */
-static void handle_posix_signal(struct event_msg *ev_msg, unsigned int ev_type)
+void trigger_posix_signal(int sig_nr, struct siginfo *info, void *aux)
 {
-	int sig_nr;
 	struct sigaction *action;
-	struct siginfo info = {0};
-	assert(ev_msg);
-	sig_nr = ev_msg->ev_arg1;
 	if (sig_nr > _NSIG - 1 || sig_nr < 0)
 		return;
 	action = &sigactions[sig_nr];
@@ -119,24 +111,46 @@ static void handle_posix_signal(struct event_msg *ev_msg, unsigned int ev_type)
 	if (action->sa_handler == SIG_IGN)
 		return;
 	if (action->sa_handler == SIG_DFL) {
-		default_handlers[sig_nr](sig_nr);
+		if (default_handlers[sig_nr] != SIG_IGN)
+			default_handlers[sig_nr](sig_nr);
 		return;
 	}
 
 	if (action->sa_flags & SA_SIGINFO) {
-		info.si_signo = sig_nr;
-		/* TODO: consider pid and whatnot */
-		action->sa_sigaction(sig_nr, &info, 0);
+		/* Make sure the caller either already set singo in the info struct, or
+		 * if they didn't, make sure it has been zeroed out (i.e. not just some
+		 * garbage on the stack. */
+		assert(info->si_signo == sig_nr || info->si_signo == 0);
+		info->si_signo = sig_nr;
+		/* TODO: consider info->pid and whatnot */
+		/* We assume that this function follows the proper calling convention
+		 * (i.e. it wasn't written in some crazy assembly function that
+		 * trashes all its registers, i.e GO's default runtime handler) */
+		action->sa_sigaction(sig_nr, info, aux);
 	} else {
 		action->sa_handler(sig_nr);
 	}
+}
+
+/* This is the catch all akaros event->posix signal handler.  All posix signals
+ * are received in a single akaros event type.  They are then dispatched from
+ * this function to their proper posix signal handler */
+static void handle_event(struct event_msg *ev_msg, unsigned int ev_type)
+{
+	int sig_nr;
+	struct siginfo info = {0};
+	info.si_code = SI_USER;
+
+	assert(ev_msg);
+	sig_nr = ev_msg->ev_arg1;
+	trigger_posix_signal(sig_nr, &info, 0);
 }
 
 /* Called from uthread_slim_init() */
 void init_posix_signals(void)
 {
 	struct event_queue *posix_sig_ev_q;
-	ev_handlers[EV_POSIX_SIGNAL] = handle_posix_signal;
+	ev_handlers[EV_POSIX_SIGNAL] = handle_event;
 	posix_sig_ev_q = get_big_event_q();
 	assert(posix_sig_ev_q);
 	posix_sig_ev_q->ev_flags = EVENT_IPI | EVENT_INDIR | EVENT_FALLBACK;
@@ -216,7 +230,7 @@ int sigtimedwait(__const sigset_t *__restrict __set,
 	return 0;
 }
 
-/* Needs support with handle_posix_signal to deal with passing values with POSIX
+/* Needs support with trigger_posix_signal to deal with passing values with POSIX
  * signals. */
 int sigqueue(__pid_t __pid, int __sig, __const union sigval __val)
 {

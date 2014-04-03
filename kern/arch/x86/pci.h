@@ -355,8 +355,17 @@ struct pci_device {
 	uint8_t						class;
 	uint8_t						subclass;
 	uint8_t						progif;
+	uint32_t					msi_msg_addr_hi;
+	uint32_t					msi_msg_addr_lo;
+	uint32_t					msi_msg_data;
 	uint8_t						nr_bars;
 	struct pci_bar				bar[MAX_PCI_BAR];
+	uint32_t					caps[PCI_CAP_ID_MAX + 1];
+	/* for MSI-X we might have allocated two physically contiguous pages. */
+	void *                                          msix;
+	int                                             msixbar;
+	int                                             msixready;
+	int                                             msixsize;
 };
 
 /* List of all discovered devices */
@@ -366,19 +375,25 @@ extern struct pcidev_stailq pci_devices;
 
 void pci_init(void);
 void pcidev_print_info(struct pci_device *pcidev, int verbosity);
-uint32_t pci_config_addr(uint8_t bus, uint8_t dev, uint8_t func, uint8_t reg);
+uint32_t pci_config_addr(uint8_t bus, uint8_t dev, uint8_t func, uint32_t reg);
 
 /* Read and write helpers (Eventually, we should have these be statics, since no
  * device should touch PCI config space). */
-uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
-void pci_write32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset,
+uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset);
+void pci_write32(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset,
                  uint32_t value);
-uint32_t pcidev_read32(struct pci_device *pcidev, uint8_t offset);
-void pcidev_write32(struct pci_device *pcidev, uint8_t offset, uint32_t value);
-uint16_t pcidev_read16(struct pci_device *pcidev, uint8_t offset);
-void pcidev_write16(struct pci_device *pcidev, uint8_t offset, uint16_t value);
-uint8_t pcidev_read8(struct pci_device *pcidev, uint8_t offset);
-void pcidev_write8(struct pci_device *pcidev, uint8_t offset, uint8_t value);
+uint16_t pci_read16(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset);
+void pci_write16(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset,
+                 uint16_t value);
+uint8_t pci_read8(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset);
+void pci_write8(uint8_t bus, uint8_t dev, uint8_t func, uint32_t offset,
+                uint8_t value);
+uint32_t pcidev_read32(struct pci_device *pcidev, uint32_t offset);
+void pcidev_write32(struct pci_device *pcidev, uint32_t offset, uint32_t value);
+uint16_t pcidev_read16(struct pci_device *pcidev, uint32_t offset);
+void pcidev_write16(struct pci_device *pcidev, uint32_t offset, uint16_t value);
+uint8_t pcidev_read8(struct pci_device *pcidev, uint32_t offset);
+void pcidev_write8(struct pci_device *pcidev, uint32_t offset, uint8_t value);
 
 /* BAR helpers, some more helpful than others. */
 uint32_t pci_membar_get_sz(struct pci_device *pcidev, int bar);
@@ -391,5 +406,23 @@ uint32_t pci_getiobar32(uint32_t bar);
 
 /* Other common PCI functions */
 void pci_set_bus_master(struct pci_device *pcidev);
+void pci_clr_bus_master(struct pci_device *pcidev);
+struct pci_device *pci_match_tbdf(int tbdf);
+
+/* MSI functions, msi.c */
+int pci_msi_enable(struct pci_device *p, uint64_t vec);
+int pci_msix_enable(struct pci_device *p, uint64_t vec);
+
+/* MSI irq handler functions, msi.c */
+struct irq_handler; /* include loops */
+void msi_mask_irq(struct irq_handler *irq_h, int apic_vector);
+void msi_unmask_irq(struct irq_handler *irq_h, int apic_vector);
+int msi_route_irq(struct irq_handler *irq_h, int apic_vector, int dest);
+int pci_find_unused_bars(struct pci_device *dev, int *bars, int need);
+
+/* TODO: this is quite the Hacke */
+#define explode_tbdf(tbdf) {pcidev.bus = tbdf >> 16;\
+		pcidev.dev = (tbdf>>11)&0x1f;\
+		pcidev.func = (tbdf>>8)&3;}
 
 #endif /* ROS_ARCH_PCI_H */

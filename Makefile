@@ -316,6 +316,7 @@ CFLAGS_KERNEL += -fno-stack-protector
 CFLAGS_KERNEL += -Wall -Wno-format -Wno-unused
 CFLAGS_KERNEL += -DROS_KERNEL 
 CFLAGS_KERNEL += -include include/generated/autoconf.h -include include/common.h
+CFLAGS_KERNEL += -fplan9-extensions
 ifeq ($(CONFIG_64BIT),y)
 CFLAGS_KERNEL += -m64 -g
 else
@@ -535,8 +536,10 @@ endif #ifeq ($(mixed-targets),1)
 # List all userspace directories here, and state any dependencies between them,
 # such as how pthread depends on parlib.
 
-user-dirs = parlib pthread benchutil
-pthread: parlib
+user-dirs = parlib pthread benchutil iplib ndblib 
+pthread: parlib benchutil
+iplib: parlib
+ndblib: iplib
 
 PHONY += install-libs $(user-dirs)
 install-libs: $(user-dirs) symlinks cc-exists
