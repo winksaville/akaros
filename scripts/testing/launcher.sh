@@ -8,6 +8,7 @@ set -e
 
 readonly TMP_DIR=tmp
 readonly DIFF_FILE=$TMP_DIR/changes.txt
+readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt
 readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
 readonly CHANGES_SCR=$TEST_DIR/changes.py
@@ -24,8 +25,10 @@ mkdir -p $TEST_OUTPUT_DIR
 # Save changed files between last tested commit and current one.
 git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 
+
+
 ################################################################################
-###############                COMPILATION BEGINS                ###############
+###############                 COMPILATION STEPS                ###############
 ################################################################################
 
 function build_config() {
@@ -70,9 +73,10 @@ function build_kernel() {
 
 function build_userspace() {
 	# This is needed because of a bug that won't let tests to be compiled
-	# unless there is a busybox file in a given dir.
+	# unless the following files are present.
 	cd kern/kfs/bin
 	touch busybox
+	touch chmod
 	cd -
 
 	# Compile tests.
@@ -93,11 +97,11 @@ function run_qemu() {
 if [ "$COMPILE_ALL" == true ]; then
 	echo "Building all AKAROS"
 	build_config
-	# build_cross_compiler
+	build_cross_compiler
 	add_cross_compiler_to_path
 	build_kernel
 	build_userspace
-	run_qemu > $TMP_DIR/log.txt
+	run_qemu > AKAROS_OUTPUT_FILE
 else
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
@@ -110,8 +114,9 @@ fi
 # ones needed
 
 
-
-
+################################################################################
+###############                   TESTING STEPS                  ###############
+################################################################################
 
 # Run tests
 for TEST_NAME in "${TEST_NAMES[@]}"
