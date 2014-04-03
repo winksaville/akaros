@@ -67,14 +67,38 @@ X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
 }
 
 function build_kernel() {
-	
+	make
+}
+
+function build_userspace() {
+	# This is needed because of a bug that won't let tests to be compiled
+	# unless there is a busybox file in a given dir.
+	cd kern/kfs/bin
+	touch busybox
+	cd -
+
+	# Compile tests.
+	make tests
+
+	# Fill memory with tests.
+	make fill-kfs
+
+	# Recompile kernel.
+	make
+}
+
+function run_qemu() {
+	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
+	make qemu
 }
 
 if [ "$COMPILE_ALL" == true ]; then
 	echo "Building all AKAROS"
-	# 1. 
 	build_config
-	build_cross_compiler
+	# build_cross_compiler
+	build_kernel
+	build_userspace
+	run_qemu
 else
 	CHANGES=`$CHANGES_SCR $DIFF_FILE`
 	echo "Building "$CHANGES
