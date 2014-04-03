@@ -34,6 +34,7 @@ if [ "$INITIAL_SETUP" == true ]; then
 	echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 	echo "Set up finished succesfully."
 	echo "Please run sudo chmod 4755 scripts/testing/utils/qemu_launcher"
+	echo "Please run sudo chown root:root scripts/testing/utils/qemu_launcher"
 	echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 	echo ""
 	exit 0
