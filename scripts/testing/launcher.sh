@@ -123,7 +123,7 @@ function build_userspace() {
 function run_qemu() {
 	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
 	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
-	make qemu &> $AKAROS_OUTPUT_FILE
+	make qemu > $AKAROS_OUTPUT_FILE &
 	QEMU_PID=$!
 
 	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_PB_KERNEL_TESTS
