@@ -11,7 +11,12 @@ readonly DIFF_FILE=$TMP_DIR/changes.txt
 readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt
 readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
-readonly CHANGES_SCR=$TEST_DIR/changes.py
+readonly SCR_DIR=scripts/testing/utils
+
+# Utility scripts
+readonly SCR_WAIT_UNTIL=$SCR_DIR/wait_until.py
+readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
+
 # Fill in new tests here
 readonly TEST_NAMES=( sampletest ) 
 
@@ -28,7 +33,7 @@ if [ "$INITIAL_SETUP" == true ]; then
 
 	# Compile QEMU launcher
 	mkdir -p $WORKSPACE/install/qemu_launcher/
-	gcc scripts/testing/utils/qemu_launcher.c -o install/qemu_launcher/qemu_launcher
+	gcc $SCR_DIR/qemu_launcher.c -o install/qemu_launcher/qemu_launcher
 
 	echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 	echo "Set up finished succesfully."
@@ -118,10 +123,11 @@ function build_userspace() {
 function run_qemu() {
 	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
 	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
-	make qemu &
+	make qemu &> $AKAROS_OUTPUT_FILE
 	QEMU_PID=$!
 
-	sleep 60s
+	SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_PB_KERNEL_TESTS
+
 	kill -10 $QEMU_PID
 }
 
@@ -134,17 +140,17 @@ if [ "$COMPILE_ALL" == true ]; then
 	add_cross_compiler_to_path
 	build_kernel
 	build_userspace
-	run_qemu > $AKAROS_OUTPUT_FILE
+	run_qemu
 else
 	# Save changed files between last tested commit and current one.
 	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 
 	# Extract build targets by parsing diff file.
-	CHANGES=`$CHANGES_SCR $DIFF_FILE`
+	CHANGES=`$SCR_GIT_CHANGES $DIFF_FILE`
 	echo "Building "$CHANGES
 
 	add_cross_compiler_to_path
-	run_qemu > $AKAROS_OUTPUT_FILE
+	run_qemu
 	# TODO: If cross compiler need not be defined, still call add_cross_com...
 	# TODO: Compile only the rules needed
 fi

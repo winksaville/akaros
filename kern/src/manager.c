@@ -55,6 +55,9 @@ void postboot_kernel_tests(void)
 			printk("\tDISABLED [%s]\n", test->name);
 		}
 	}
+	// Do not remove this line, it is being used for Jenkins to detect when
+	// tests have finished.
+	printk("\n<!-- END_PB_KERNEL_TESTS -->\n");
 }
 
 /*
