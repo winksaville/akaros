@@ -41,6 +41,9 @@ void postboot_kernel_tests(void)
 {
 	printk("\nRunning %d postboot Kernel tests:\n", 
 		   num_pb_kernel_tests);
+
+	// Do not remove this line, it is being used by Jenkins.
+	printk("<-- BEGIN_PB_KERNEL_TESTS -->\n");
 	for (int i=0; i<num_pb_kernel_tests; i++) {
 		struct pb_kernel_test *test = &pb_kernel_tests[i];
 		if (test->enabled) {
@@ -55,9 +58,8 @@ void postboot_kernel_tests(void)
 			printk("\tDISABLED [%s]\n", test->name);
 		}
 	}
-	// Do not remove this line, it is being used for Jenkins to detect when
-	// tests have finished.
-	printk("\n<!-- END_PB_KERNEL_TESTS -->\n");
+	// Do not remove this line, it is being used by Jenkins.
+	printk("<-- END_PB_KERNEL_TESTS -->\n");
 }
 
 /*
