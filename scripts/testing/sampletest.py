@@ -7,15 +7,13 @@ try:
 except ImportError:
     import unittest
 
-class SimpleTest(unittest.TestCase):
-    @unittest.skip("demonstrating skipping")
-    def test_skipped(self):
-        self.fail("shouldn't happen")
-
-    def test_pass(self):
+class TestWrapper(unittest.TestCase):
+    def test_kern(self):
         self.assertEqual(10, 7 + 3)
         self.assertEqual(10, 7 + 3)
-        self.assertEqual(10, 7 + 2)
+        # 'tmp/akaros_out.txt'
 
     # def test_fail(self):
     #     self.assertEqual(11, 7 + 3)
+
+# TODO: for each test, tag: @attr('kernel','compiler')

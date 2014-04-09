@@ -8,7 +8,8 @@ set -e
 
 readonly TMP_DIR=tmp
 readonly DIFF_FILE=$TMP_DIR/changes.txt
-readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt
+readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt # If changed, please
+													# change .py test files too.
 readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
 readonly SCR_DIR=scripts/testing/utils
@@ -20,9 +21,6 @@ readonly CONF_COMP_COMPONENTS_FILE=$CONF_DIR/compilation_components.json
 # Utility scripts
 readonly SCR_WAIT_UNTIL=$SCR_DIR/wait_until.py
 readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
-
-# Fill in new tests here
-readonly TEST_NAMES=( sampletest ) 
 
 
 
@@ -51,14 +49,14 @@ fi
 
 
 ################################################################################
-###############                  PRE BUILD SETUP                 ###############
+###############                 PRE BUILD SETUP                  ###############
 ################################################################################
 # Clean these two directories
 rm $TMP_DIR/* $TEST_OUTPUT_DIR/* -f
 
 
 ################################################################################
-###############                 COMPILATION STEPS                ###############
+###############                    COMPILATION                   ###############
 ################################################################################
 
 function build_config() {
@@ -145,6 +143,8 @@ if [ "$COMPILE_ALL" == true ]; then
 	build_kernel
 	build_userspace
 	run_qemu
+
+	# TODO: Fill CHANGES with everything
 else
 	# Save changed files between last tested commit and current one.
 	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
@@ -158,17 +158,18 @@ else
 	# TODO: Compile only the rules needed
 fi
 
-# TODO: Detect changes and fill TEST_NAMES and COMPILE_PARTS accordingly to the 
-# ones needed
-
 
 ################################################################################
-###############                   TESTING STEPS                  ###############
+###############                  TEST REPORTING                  ###############
 ################################################################################
 
-# Run tests
-for TEST_NAME in "${TEST_NAMES[@]}"
+# Prepend '-a ' to all $CHANGES to pass it as argument to nosetests.
+IFS=' ' read -a CHANGES_ARRAY <<< "$CHANGES"
+TESTS_TO_RUN=""
+for COMPONENT in "${CHANGES_ARRAY[@]}"; 
 do
-	`nosetests $TEST_NAME.py -w $TEST_DIR --with-xunit \
-	--xunit-file=$TEST_OUTPUT_DIR/$TEST_NAME.xml`
+	TESTS_TO_RUN="$TESTS_TO_RUN -a $COMPONENT"
 done
+
+nosetests $TEST_DIR/test_wrapper.py --with-xunit /
+	--xunit-file=$TEST_OUTPUT_DIR/test_output.xml $TESTS_TO_RUN
