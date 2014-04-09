@@ -128,13 +128,14 @@ function run_qemu() {
 	make qemu > $AKAROS_OUTPUT_FILE &
 	MAKE_PID=$!
 
+	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_PB_KERNEL_TESTS
+
 	# Extract Qemu_launcher PID
 	QEMU_PID=$(ps --ppid $MAKE_PID | grep qemu_launcher | \
 	           sed -e 's/^\s*//' | cut -d' ' -f1)
 
-	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_PB_KERNEL_TESTS
-
 	kill -10 $QEMU_PID
+	
 	wait $MAKE_PID
 }
 
