@@ -131,6 +131,8 @@ function run_qemu() {
 	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_PB_KERNEL_TESTS
 
 	kill -10 $QEMU_PID
+	echo "Return value: $?"
+	wait $QEMU_PID
 }
 
 
