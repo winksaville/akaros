@@ -1,0 +1,23 @@
+{
+    "_comment" : "Please see utils/changes.py for explanation of this file.",
+    "compilation_components" : {
+        "kernel": {
+            "PATHS": [
+                "kernel",
+                "butifarra/lol"
+            ]
+        },
+        "pikachu": {
+            "PATHS": [
+                "butifarra",
+                "alpino"
+            ]
+        },
+        "caotico": {
+            "PATHS": [
+                "alpino",
+                "kernel/gutierrez"
+            ]
+        }
+    }
+}

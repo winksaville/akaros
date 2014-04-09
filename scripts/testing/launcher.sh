@@ -13,6 +13,10 @@ readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
 readonly SCR_DIR=scripts/testing/utils
 
+# Config files
+readonly CONF_DIR=scripts/testing/config
+readonly CONF_COMP_COMPONENTS_FILE=$CONF_DIR/compilation_components.json
+
 # Utility scripts
 readonly SCR_WAIT_UNTIL=$SCR_DIR/wait_until.py
 readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
@@ -146,12 +150,11 @@ else
 	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 
 	# Extract build targets by parsing diff file.
-	CHANGES=`$SCR_GIT_CHANGES $DIFF_FILE`
+	CHANGES=`$SCR_GIT_CHANGES $DIFF_FILE $CONF_COMP_COMPONENTS_FILE`
 	echo "Building "$CHANGES
 
 	add_cross_compiler_to_path
 	run_qemu
-	# TODO: If cross compiler need not be defined, still call add_cross_com...
 	# TODO: Compile only the rules needed
 fi
 
