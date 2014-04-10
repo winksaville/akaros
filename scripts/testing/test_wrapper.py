@@ -6,6 +6,8 @@ try:
 except ImportError:
 	import unittest
 
+from nose.plugins.attrib import attr
+
 class TestWrapper(unittest.TestCase):
 	@attr('kernel','cross-compiler','userspace','busybox')
 	def test_kern(self):
