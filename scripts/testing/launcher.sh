@@ -29,6 +29,7 @@ readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
 ################################################################################
 
 if [ "$INITIAL_SETUP" == true ]; then
+	echo -e "\n[INITIAL_SETUP]: Begin"
 	# Create directory for tests and other temp files.
 	mkdir -p $TMP_DIR
 	mkdir -p $TEST_OUTPUT_DIR
@@ -43,6 +44,7 @@ if [ "$INITIAL_SETUP" == true ]; then
 	echo "Please run sudo chmod 4755 install/qemu_launcher/qemu_launcher"
 	echo "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *"
 	echo ""
+	echo -e "[INITIAL_SETUP]: End\n"
 	exit 0
 fi
 
@@ -69,15 +71,20 @@ add_cross_compiler_to_path
 ################################################################################
 
 function build_config() {
+	echo -e "\n[SET_MAKE_CONFIG]: Begin"
 	make ARCH=x86 defconfig
 
 	# Enable postboot kernel tests to run.
 	# These don't take much to execute so we can run them always and just parse
 	# results if needed
 	echo "CONFIG_POSTBOOT_KERNEL_TESTING=y" >> .config
+
+	echo -e "[SET_MAKE_CONFIG]: End\n"
 }
 
 function build_cross_compiler() {
+	echo -e "\n[BUILD_CROSS_COMPILER]: Begin"
+
 	cd tools/compilers/gcc-glibc
 
 	# Define cross compiler Makelocal.
@@ -100,13 +107,17 @@ X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
 
 	# Go back to root directory.
 	cd ../../..
+	echo -e "[BUILD_CROSS_COMPILER]: End\n"
 }
 
 function build_kernel() {
+	echo -e "\n[BUILD_KERNEL]: Begin"
 	make
+	echo -e "[BUILD_KERNEL]: End\n"
 }
 
 function build_userspace() {
+	echo -e "\n[BUILD_USERSPACE]: Begin"
 	# This is needed because of a bug that won't let tests to be compiled
 	# unless the following files are present.
 	cd kern/kfs/bin
@@ -122,14 +133,19 @@ function build_userspace() {
 
 	# Recompile kernel.
 	make
+	echo -e "[BUILD_USERSPACE]: End\n"
 }
 
 function build_busybox() {
+	echo -e "\n[BUILD_BUSYBOX]: Begin"
 	# TO DO
 	echo "[TO DO] Build busybox"
+	echo -e "[BUILD_BUSYBOX]: End\n"
 }
 
 function run_qemu() {
+	echo -e "\n[RUN_AKAROS_IN_QEMU]: Begin"
+
 	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
 	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
 	make qemu > $AKAROS_OUTPUT_FILE &
@@ -144,6 +160,8 @@ function run_qemu() {
 	kill -10 $QEMU_PID
 
 	wait $MAKE_PID
+
+	echo -e "[RUN_AKAROS_IN_QEMU]: End\n"
 }
 
 
@@ -207,6 +225,8 @@ fi
 ###############                  TEST REPORTING                  ###############
 ################################################################################
 
+echo -e "\n[TEST_REPORTING]: Begin"
+
 # Prepend '-a ' to all $AFFECTED_COMPONENTS to pass it as argument to nosetests.
 IFS=' ' read -a AFFECTED_COMPONENTS_ARRAY <<< "$AFFECTED_COMPONENTS"
 TESTS_TO_RUN=""
@@ -217,3 +237,5 @@ done
 
 nosetests $TEST_DIR/test_wrapper.py --with-xunit \
 	--xunit-file=$TEST_OUTPUT_DIR/test_output.xml $TESTS_TO_RUN
+
+echo -e "[TEST_REPORTING]: End\n"
