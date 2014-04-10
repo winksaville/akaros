@@ -240,6 +240,7 @@ do
 done
 
 echo -e "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" > $TEST_OUTPUT_DIR/test_output.xml
+echo -e "<testsuites>" >> $TEST_OUTPUT_DIR/test_output.xml
 echo -e "<testsuite name=\"nosetests\" tests=\"2\" errors=\"1\" failures=\"0\" skip=\"0\">" >> $TEST_OUTPUT_DIR/test_output.xml
 echo -e "<testcase classname=\"uno.dos.Tres\" name=\"cuatro\" time=\"0.000\">" >> $TEST_OUTPUT_DIR/test_output.xml
 echo -e "<error type=\"exceptions.IOError\" message=\"I like turtles\">"  >> $TEST_OUTPUT_DIR/test_output.xml
@@ -254,6 +255,7 @@ echo -e "</error>" >> $TEST_OUTPUT_DIR/test_output.xml
 echo -e "</testcase>" >> $TEST_OUTPUT_DIR/test_output.xml
 echo -e "<testcase classname=\"dos.tres.Cuatro\" name=\"Cinco\" time=\"0.000\"/>" >> $TEST_OUTPUT_DIR/test_output.xml
 echo -e "</testsuite>" >> $TEST_OUTPUT_DIR/test_output.xml
+echo -e "</testsuites>" >> $TEST_OUTPUT_DIR/test_output.xml
 
 # nosetests $TEST_DIR/test_wrapper.py --with-xunit \
 # 	--xunit-file=$TEST_OUTPUT_DIR/test_output.xml $TESTS_TO_RUN
