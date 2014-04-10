@@ -166,8 +166,7 @@ else
 
 	# Extract build targets by parsing diff file.
 	AFFECTED_COMPONENTS=`$SCR_GIT_CHANGES $DIFF_FILE $CONF_COMP_COMPONENTS_FILE`
-
-	# AFFECTED_COMPONENTS can contain {cross-compiler, kernel, userspace, busybox}
+	# Can contain {cross-compiler, kernel, userspace, busybox}
 
 	if [[ -n $AFFECTED_COMPONENTS ]]; 
 	then
@@ -216,5 +215,5 @@ do
 	TESTS_TO_RUN="$TESTS_TO_RUN -a $COMPONENT"
 done
 
-nosetests $TEST_DIR/test_wrapper.py --with-xunit /
+nosetests $TEST_DIR/test_wrapper.py --with-xunit \
 	--xunit-file=$TEST_OUTPUT_DIR/test_output.xml $TESTS_TO_RUN
