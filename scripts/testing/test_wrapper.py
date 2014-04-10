@@ -15,4 +15,4 @@ class TestWrapper(unittest.TestCase):
     # def test_fail(self):
     #     self.assertEqual(11, 7 + 3)
 
-# TODO: for each test, tag: @attr('kernel','compiler')
+# TODO: for each test, tag: @attr('kernel','cross-compiler','userspace','busybox')

@@ -1,22 +1,38 @@
 {
     "_comment" : "Please see utils/changes.py for explanation of this file.",
     "compilation_components" : {
+        "cross-compiler": {
+            "PATHS": [
+                "./tools/compilers/+",
+                "./kern/include/ros/+",
+                "./kern/arch/{{arch}}/ros/+",
+                "./user/parlib/include/+",
+                "./user/pthread/+"
+            ]
+        },
         "kernel": {
             "PATHS": [
-                "kernel",
-                "butifarra/lol"
+                "./",
+                "./kern/arch/+",
+                "./kern/drivers/+",
+                "./kern/include/+",
+                "./kern/kfs/+",
+                "./kern/src/+",
+                "./scripts/kconfig/+"
             ]
         },
-        "pikachu": {
+        "userspace": {
             "PATHS": [
-                "butifarra",
-                "alpino"
+                "./",
+                "./kern/include/ros/+",
+                "./user/+",
+                "./tests/+",
+                "./scripts/kconfig/+"
             ]
         },
-        "caotico": {
+        "busybox": {
             "PATHS": [
-                "alpino",
-                "kernel/gutierrez"
+                "./tools/patches/busybox/+"
             ]
         }
     }

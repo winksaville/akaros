@@ -51,8 +51,17 @@ fi
 ################################################################################
 ###############                 PRE BUILD SETUP                  ###############
 ################################################################################
+
+function add_cross_compiler_to_path() {
+	export PATH=$WORKSPACE/install/riscv-ros-gcc/bin:$PATH
+	export PATH=$WORKSPACE/install/i686-ros-gcc/bin:$PATH
+	export PATH=$WORKSPACE/install/x86_64-ros-gcc/bin:$PATH
+	export PATH=$WORKSPACE/install/x86_64-ros-gcc-native/bin:$PATH
+}
+
 # Clean these two directories
 rm $TMP_DIR/* $TEST_OUTPUT_DIR/* -f
+add_cross_compiler_to_path
 
 
 ################################################################################
@@ -66,13 +75,6 @@ function build_config() {
 	# These don't take much to execute so we can run them always and just parse
 	# results if needed
 	echo "CONFIG_POSTBOOT_KERNEL_TESTING=y" >> .config
-}
-
-function add_cross_compiler_to_path() {
-	export PATH=$WORKSPACE/install/riscv-ros-gcc/bin:$PATH
-	export PATH=$WORKSPACE/install/i686-ros-gcc/bin:$PATH
-	export PATH=$WORKSPACE/install/x86_64-ros-gcc/bin:$PATH
-	export PATH=$WORKSPACE/install/x86_64-ros-gcc-native/bin:$PATH
 }
 
 function build_cross_compiler() {
@@ -122,6 +124,11 @@ function build_userspace() {
 	make
 }
 
+function build_busybox() {
+	# TO DO
+	echo "[TO DO] Build busybox"
+}
+
 function run_qemu() {
 	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
 	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
@@ -135,7 +142,7 @@ function run_qemu() {
 	           sed -e 's/^\s*//' | cut -d' ' -f1)
 
 	kill -10 $QEMU_PID
-	
+
 	wait $MAKE_PID
 }
 
@@ -144,24 +151,56 @@ function run_qemu() {
 if [ "$COMPILE_ALL" == true ]; then
 	echo "Building all AKAROS"
 	build_config
+	
 	build_cross_compiler
-	add_cross_compiler_to_path
 	build_kernel
 	build_userspace
+	build_busybox
+
 	run_qemu
 
-	# TODO: Fill CHANGES with everything
+	# TODO: Fill AFFECTED_COMPONENTS with everything
 else
 	# Save changed files between last tested commit and current one.
 	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
 
 	# Extract build targets by parsing diff file.
-	CHANGES=`$SCR_GIT_CHANGES $DIFF_FILE $CONF_COMP_COMPONENTS_FILE`
-	echo "Building "$CHANGES
+	AFFECTED_COMPONENTS=`$SCR_GIT_CHANGES $DIFF_FILE $CONF_COMP_COMPONENTS_FILE`
 
-	add_cross_compiler_to_path
+	# AFFECTED_COMPONENTS can contain {cross-compiler, kernel, userspace, busybox}
+
+	if [[ -n $AFFECTED_COMPONENTS ]]; 
+	then
+		echo "Detected changes in "$AFFECTED_COMPONENTS
+		build_config
+
+		if [[ $AFFECTED_COMPONENTS == *cross-compiler* ]]
+		then
+			build_cross_compiler
+			build_kernel
+			build_userspace
+			build_busybox
+		else 
+			if [[ $AFFECTED_COMPONENTS == *kernel* ]]
+			then
+				build_kernel
+			fi
+
+			if [[ $AFFECTED_COMPONENTS == *userspace* ]]
+			then
+				build_userspace
+			fi
+
+			if [[ $AFFECTED_COMPONENTS == *busybox* ]]
+			then
+				build_busybox
+			fi
+		fi
+	else
+		echo "Skipping build. No changes detected."
+	fi
+
 	run_qemu
-	# TODO: Compile only the rules needed
 fi
 
 
@@ -169,10 +208,10 @@ fi
 ###############                  TEST REPORTING                  ###############
 ################################################################################
 
-# Prepend '-a ' to all $CHANGES to pass it as argument to nosetests.
-IFS=' ' read -a CHANGES_ARRAY <<< "$CHANGES"
+# Prepend '-a ' to all $AFFECTED_COMPONENTS to pass it as argument to nosetests.
+IFS=' ' read -a AFFECTED_COMPONENTS_ARRAY <<< "$AFFECTED_COMPONENTS"
 TESTS_TO_RUN=""
-for COMPONENT in "${CHANGES_ARRAY[@]}"; 
+for COMPONENT in "${AFFECTED_COMPONENTS_ARRAY[@]}"; 
 do
 	TESTS_TO_RUN="$TESTS_TO_RUN -a $COMPONENT"
 done
