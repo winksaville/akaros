@@ -1,5 +1,9 @@
 #!/usr/bin/python
 """Parses AKAROS output to detect tests and report on them.
+Arguments:
+	[0]: Path to file containing AKAROS output.
+	[1]: Path to directory where to save test reports.
+	[2]: IDs of tests suites to look for.
 """
 import markup
 import re
