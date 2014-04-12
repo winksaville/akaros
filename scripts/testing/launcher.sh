@@ -234,11 +234,11 @@ fi
 echo -e "\n[TEST_REPORTING]: Begin"
 
 TESTS_TO_RUN="KERNEL_POSTBOOT" # TODO(alfongj): Remove this when not needed.
-for COMPONENT in "${AFFECTED_COMPONENTS_ARRAY[@]}"; 
-do
-	# TODO(alfongj): Add to tests to run the name of the test suites to be ran.
-	# TESTS_TO_RUN="$TESTS_TO_RUN SOMETHING"
-done
+# for COMPONENT in "${AFFECTED_COMPONENTS_ARRAY[@]}"; 
+# do
+# 	# TODO(alfongj): Add to tests to run the name of the test suites to be ran.
+# 	# TESTS_TO_RUN="$TESTS_TO_RUN SOMETHING"
+# done
 
 # Generate test report
 $SCR_GEN_TEST_REPORTS $AKAROS_OUTPUT_FILE $TEST_OUTPUT_DIR $TESTS_TO_RUN
