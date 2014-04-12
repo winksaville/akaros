@@ -43,7 +43,7 @@ void postboot_kernel_tests(void)
 		   num_pb_kernel_tests);
 
 	// Do not remove this line, it is being used by Jenkins.
-	printk("<-- BEGIN_PB_KERNEL_TESTS -->\n");
+	printk("<-- BEGIN_KERNEL_POSTBOOT_TESTS -->\n");
 	for (int i=0; i<num_pb_kernel_tests; i++) {
 		struct pb_kernel_test *test = &pb_kernel_tests[i];
 		if (test->enabled) {
@@ -59,7 +59,7 @@ void postboot_kernel_tests(void)
 		}
 	}
 	// Do not remove this line, it is being used by Jenkins.
-	printk("<-- END_PB_KERNEL_TESTS -->\n");
+	printk("<-- END_KERNEL_POSTBOOT_TESTS -->\n");
 }
 
 /*

@@ -21,7 +21,7 @@ readonly CONF_COMP_COMPONENTS_FILE=$CONF_DIR/compilation_components.json
 # Utility scripts
 readonly SCR_WAIT_UNTIL=$SCR_DIR/wait_until.py
 readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
-
+readonly SCR_GEN_TEST_REPORTS=$SCR_DIR/gen_test_reports.py
 
 
 ################################################################################
@@ -149,7 +149,7 @@ function build_busybox() {
 function run_qemu() {
 	echo -e "\n[RUN_AKAROS_IN_QEMU]: Begin"
 
-	echo "-include scripts/testing/Makelocal_qemu" > Makelocal
+	echo "-include $CONF_DIR/Makelocal_qemu" > Makelocal
 	export PATH=$WORKSPACE/install/qemu_launcher/:$PATH
 	make qemu > $AKAROS_OUTPUT_FILE &
 	MAKE_PID=$!
@@ -231,33 +231,15 @@ fi
 
 echo -e "\n[TEST_REPORTING]: Begin"
 
-# Prepend '-a ' to all $AFFECTED_COMPONENTS to pass it as argument to nosetests.
-IFS=' ' read -a AFFECTED_COMPONENTS_ARRAY <<< "$AFFECTED_COMPONENTS"
-TESTS_TO_RUN=""
+TESTS_TO_RUN="KERNEL_POSTBOOT" # TODO(alfongj): Remove this when not needed.
 for COMPONENT in "${AFFECTED_COMPONENTS_ARRAY[@]}"; 
 do
-	TESTS_TO_RUN="$TESTS_TO_RUN -a $COMPONENT"
+	# TODO(alfongj): Add to tests to run the name of the test suites to be ran.
+	# TESTS_TO_RUN="$TESTS_TO_RUN SOMETHING"
 done
 
-echo -e "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" > $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testsuites>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testsuite name=\"nosetests\" tests=\"2\" errors=\"1\" failures=\"0\" skip=\"0\">" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testcase classname=\"uno.dos.Tres\" name=\"cuatro\" time=\"0.000\">" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<error type=\"exceptions.IOError\" message=\"I like turtles\">"  >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</error>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</testcase>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testcase classname=\"uno.tres.Cuatro\" name=\"Cinco\" time=\"0.000\"/>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</testsuite>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testsuite name=\"eyetests\" tests=\"2\" errors=\"1\" failures=\"0\" skip=\"0\">" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testcase classname=\"uno.dos.Tres\" name=\"cuatro\" time=\"0.000\">" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<error type=\"exceptions.IOError\" message=\"I like turtles\">"  >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</error>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</testcase>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "<testcase classname=\"dos.tres.Cuatro\" name=\"Cinco\" time=\"0.000\"/>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</testsuite>" >> $TEST_OUTPUT_DIR/test_output.xml
-echo -e "</testsuites>" >> $TEST_OUTPUT_DIR/test_output.xml
-
-# nosetests $TEST_DIR/test_wrapper.py --with-xunit \
-# 	--xunit-file=$TEST_OUTPUT_DIR/test_output.xml $TESTS_TO_RUN
+# Generate test report
+$SCR_GEN_TEST_REPORTS $AKAROS_OUTPUT_FILE $TEST_OUTPUT_DIR $TESTS_TO_RUN
+echo "Tests generated in $TEST_OUTPUT_DIR"
 
 echo -e "[TEST_REPORTING]: End\n"
