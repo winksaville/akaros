@@ -21,7 +21,7 @@ readonly CONF_COMP_COMPONENTS_FILE=$CONF_DIR/compilation_components.json
 # Utility scripts
 readonly SCR_WAIT_UNTIL=$SCR_DIR/wait_until.py
 readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
-readonly SCR_GEN_TEST_REPORTS=$SCR_DIR/gen_test_reports.py
+readonly SCR_GEN_TEST_REPORTS=$SCR_DIR/test_reporter.py
 
 
 ################################################################################
