@@ -155,7 +155,9 @@ function run_qemu() {
 	MAKE_PID=$!
 
 	# TODO: Add exit condition with timeout in case something breaks.
-	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_PB_KERNEL_TESTS
+	# TODO: Rather than finishing after Kernel PB Tests, put a generic 
+	#       "C'est fini" statement somewhere and look for it
+	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_KERNEL_POSTBOOT_TESTS
 
 	# Extract Qemu_launcher PID
 	QEMU_PID=$(ps --ppid $MAKE_PID | grep qemu_launcher | \
