@@ -50,14 +50,15 @@ void postboot_kernel_tests(void)
 			uint64_t start = read_tsc();
 			bool result = test->func();
 			uint64_t end = read_tsc();
-			uint64_t et_ms = tsc2msec(end - start) % 1000;
+			uint64_t et_us = tsc2usec(end - start) % 1000000;
 			uint64_t et_s = tsc2sec(end - start);
 
 			if (result) {
-				printk("\tPASSED   [%s](%llu.%llus)\n", test->name, et_s, et_ms);
+				printk("\tPASSED   [%s](%llu.%06llus)\n", test->name, et_s, 
+				       et_us);
 			} else {
-				printk("\tFAILED   [%s](%llu.%llus)  %s\n", test->name, et_s, 
-				       et_ms, kern_test_msg);
+				printk("\tFAILED   [%s](%llu.%06llus)  %s\n", test->name, et_s, 
+				       et_us, kern_test_msg);
 				kfree(kern_test_msg);
 			}
 		} else {
