@@ -26,7 +26,7 @@ readonly SCR_GEN_TEST_REPORTS=$SCR_DIR/test_reporter.py
 # Busybox settings
 readonly BUSYBOX_VERSION=1.17.3
 readonly BUSYBOX_DL_URL=http://www.busybox.net/downloads/busybox-1.17.3.tar.bz2
-readonly BUSYBOX_CONF_FILE=tools/patches/busybox-1.17.3.config
+readonly BUSYBOX_CONF_FILE=tools/patches/busybox/busybox-1.17.3.config
 
 ################################################################################
 ###############                   INITIAL SETUP                  ###############
