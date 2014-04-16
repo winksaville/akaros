@@ -372,10 +372,41 @@ int nextvec(void)
 	return vecno;
 }
 
+static void msi_mask_irq(struct irq_handler *irq_h, int apic_vector)
+{
+	pci_msi_mask(irq_h->dev_private);
+}
+
+static void msi_unmask_irq(struct irq_handler *irq_h, int apic_vector)
+{
+	pci_msi_unmask(irq_h->dev_private);
+}
+
+static void msi_route_irq(struct irq_handler *irq_h, int apic_vector, int dest)
+{
+	pci_msi_route(irq_h->dev_private, dest);
+}
+
+static void msix_mask_irq(struct irq_handler *irq_h, int apic_vector)
+{
+	pci_msix_mask_vector(irq_h->dev_private);
+}
+
+static void msix_unmask_irq(struct irq_handler *irq_h, int apic_vector)
+{
+	pci_msix_unmask_vector(irq_h->dev_private);
+}
+
+static void msix_route_irq(struct irq_handler *irq_h, int apic_vector, int dest)
+{
+	pci_msix_route_vector(irq_h->dev_private, dest);
+}
+
 static int msi_irq_enable(struct irq_handler *irq_h, struct pci_device *p)
 {
 	unsigned int vno, lo, hi = 0;
 	uint64_t msivec;
+	struct msix_irq_vector *linkage;
 
 	vno = nextvec();
 
@@ -383,19 +414,31 @@ static int msi_irq_enable(struct irq_handler *irq_h, struct pci_device *p)
 	lo = IPlow | TMedge | Pm | vno;
 
 	msivec = (uint64_t) hi << 32 | lo;
-	if (pci_msi_enable(p, msivec) == -1) {
-		/* TODO: should free vno here */
-		return -1;
+	irq_h->dev_private = pci_msix_enable(p, msivec);
+	if (!irq_h->dev_private) {
+		if (pci_msi_enable(p, msivec) == -1) {
+			/* TODO: should free vno here */
+			return -1;
+		}
+		irq_h->dev_private = p;
+		irq_h->check_spurious = lapic_check_spurious;
+		irq_h->eoi = lapic_send_eoi;
+		irq_h->mask = msi_mask_irq;
+		irq_h->unmask = msi_unmask_irq;
+		irq_h->route_irq = msi_route_irq;
+		irq_h->type = "msi";
+		printk("MSI irq: (%x,%x,%x): enabling %p %s vno %d\n",
+			   p->bus, p->dev, p->func, msivec, irq_h->name, vno);
+		return vno;
 	}
 	irq_h->check_spurious = lapic_check_spurious;
 	irq_h->eoi = lapic_send_eoi;
-	irq_h->mask = msi_mask_irq;
-	irq_h->unmask = msi_unmask_irq;
-	irq_h->route_irq = msi_route_irq;
-	irq_h->type = "msi";
-	printk("msiirq: (%d,%d,%d): enabling %.16llp %s irq %d vno %d\n",
-	       p->bus, p->dev, p->func, msivec,
-		   irq_h->name, irq_h->apic_vector, vno);
+	irq_h->mask = msix_mask_irq;
+	irq_h->unmask = msix_unmask_irq;
+	irq_h->route_irq = msix_route_irq;
+	irq_h->type = "msi-x";
+	printk("MSI-X irq: (%x,%x,%x): enabling %p %s vno %d\n",
+	       p->bus, p->dev, p->func, msivec, irq_h->name, vno);
 	return vno;
 }
 
@@ -416,37 +459,28 @@ static struct Rdt *ioapic_vector2rdt(int apic_vector)
 	return rdt;
 }
 
-/* Routes the IRQ to the os_coreid.  Will take effect immediately.  Route
- * masking from rdt->lo will take effect. */
-static int ioapic_route_irq(struct irq_handler *unused, int apic_vector,
-                            int os_coreid)
+/* Routes the IRQ to the hw_coreid.  Will take effect immediately.  Route
+ * masking from rdt->lo will take effect.  The early return cases are probably
+ * bugs in IOAPIC irq_h setup. */
+static void ioapic_route_irq(struct irq_handler *unused, int apic_vector,
+                             int hw_coreid)
 {
-	int hw_coreid;
 	struct Rdt *rdt = ioapic_vector2rdt(apic_vector);
-	if (!rdt)
-		return -1;
-	if (os_coreid >= MAX_NUM_CPUS) {
-		printk("os_coreid %d out of range!\n", os_coreid);
-		return -1;
-	}
-	/* using the old akaros-style lapic id lookup */
-	hw_coreid = get_hw_coreid(os_coreid);
-	if (hw_coreid == -1) {
-		printk("os_coreid %d not a valid hw core!", os_coreid);
-		return -1;
+	if (!rdt) {
+		printk("Missing IOAPIC route for vector!\n", apic_vector);
+		return;
 	}
 	spin_lock(&rdt->apic->lock);
 	/* this bit gets set in apicinit, only if we found it via MP or ACPI */
 	if (!xlapic[hw_coreid].useable) {
 		printk("Can't route to uninitialized LAPIC %d!\n", hw_coreid);
 		spin_unlock(&rdt->apic->lock);
-		return -1;
+		return;
 	}
 	rdt->hi = hw_coreid << 24;
 	rdt->lo |= Pm | MTf;
 	rtblput(rdt->apic, rdt->intin, rdt->hi, rdt->lo);
 	spin_unlock(&rdt->apic->lock);
-	return 0;
 }
 
 static void ioapic_mask_irq(struct irq_handler *unused, int apic_vector)
@@ -552,11 +586,8 @@ int bus_irq_setup(struct irq_handler *irq_h)
 				printk("No PCI dev for tbdf %p!", irq_h->tbdf);
 				return -1;
 			}
-			irq_h->dev_private = pcidev;
 			if ((vecno = msi_irq_enable(irq_h, pcidev)) != -1)
 				return vecno;
-			/* in case we turned it half-on */;
-			msi_mask_irq(irq_h, 0 /* unused */);
 			busno = BUSBNO(irq_h->tbdf);
 			assert(busno == pcidev->bus);
 			devno = pcidev_read8(pcidev, PciINTP);

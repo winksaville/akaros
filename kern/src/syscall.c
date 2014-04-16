@@ -339,17 +339,25 @@ static int sys_proc_create(struct proc *p, char *path, size_t path_l,
 	/* TODO: need to split the proc creation, since you must load after setting
 	 * args/env, since auxp gets set up there. */
 	//new_p = proc_create(program, 0, 0);
-	if (proc_alloc(&new_p, current))
+	if (proc_alloc(&new_p, current)) {
+		set_errstr("Failed to alloc new proc");
 		goto mid_error;
+	}
 	/* Set the argument stuff needed by glibc */
 	if (memcpy_from_user_errno(p, new_p->procinfo->argp, pi->argp,
-	                           sizeof(pi->argp)))
+	                           sizeof(pi->argp))) {
+		set_errstr("Failed to memcpy argp");
 		goto late_error;
+	}
 	if (memcpy_from_user_errno(p, new_p->procinfo->argbuf, pi->argbuf,
-	                           sizeof(pi->argbuf)))
+	                           sizeof(pi->argbuf))) {
+		set_errstr("Failed to memcpy argbuf");
 		goto late_error;
-	if (load_elf(new_p, program))
+	}
+	if (load_elf(new_p, program)) {
+		set_errstr("Failed to load elf");
 		goto late_error;
+	}
 	kref_put(&program->f_kref);
 	/* Connect to stdin, stdout, stderr (part of proc_create()) */
 	assert(insert_file(&new_p->open_files, dev_stdin,  0) == 0);
@@ -360,8 +368,12 @@ static int sys_proc_create(struct proc *p, char *path, size_t path_l,
 	proc_decref(new_p);	/* give up the reference created in proc_create() */
 	return pid;
 late_error:
+	set_errno(EINVAL);
+	/* proc_destroy will decref once, which is for the ref created in
+	 * proc_create().  We don't decref again (the usual "+1 for existing"),
+	 * since the scheduler, which usually handles that, hasn't heard about the
+	 * process (via __proc_ready()). */
 	proc_destroy(new_p);
-	proc_decref(new_p);	/* give up the reference created in proc_create() */
 mid_error:
 	kref_put(&program->f_kref);
 	return -1;
@@ -579,6 +591,10 @@ static int sys_exec(struct proc *p, char *path, size_t path_l,
 	user_memdup_free(p, t_path);
 	if (!program)
 		goto early_error;
+	if (!is_valid_elf(program)) {
+		set_errno(ENOEXEC);
+		goto early_error;
+	}
 	/* Set the argument stuff needed by glibc */
 	if (memcpy_from_user_errno(p, p->procinfo->argp, pi->argp,
 	                           sizeof(pi->argp)))
@@ -1731,10 +1747,7 @@ static intreg_t sys_fd2path(struct proc *p, int fd, void *u_buf, size_t len)
 		return -1;
 	}
 	ch = fdtochan(current->fgrp, fd, -1, FALSE, TRUE);
-	if (ch->name != NULL) {
-		memmove(u_buf, ch->name->s, ch->name->len + 1);
-	}
-	ret = ch->name->len;
+	ret = snprintf(u_buf, len, "%s", channame(ch));
 	cclose(ch);
 	poperror();
 	return ret;
@@ -1894,12 +1907,14 @@ void run_local_syscall(struct syscall *sysc)
 {
 	struct per_cpu_info *pcpui = &per_cpu_info[core_id()];
 
-	/* TODO: (UMEM) assert / pin the memory for the sysc */
 	assert(irq_is_enabled());	/* in case we proc destroy */
-	/* Abort on mem check failure, for now */
-	if (!user_mem_check(pcpui->cur_proc, sysc, sizeof(struct syscall),
-	                    sizeof(uintptr_t), PTE_USER_RW))
+	/* In lieu of pinning, we just check the sysc and will PF on the user addr
+	 * later (if the addr was unmapped).  Which is the plan for all UMEM. */
+	if (!is_user_rwaddr(sysc, sizeof(struct syscall))) {
+		printk("[kernel] bad user addr %p (+%p) in %s (user bug)\n", sysc,
+		       sizeof(struct syscall), __FUNCTION__);
 		return;
+	}
 	pcpui->cur_kthread->sysc = sysc;	/* let the core know which sysc it is */
 	sysc->retval = syscall(pcpui->cur_proc, sysc->num, sysc->arg0, sysc->arg1,
 	                       sysc->arg2, sysc->arg3, sysc->arg4, sysc->arg5);
@@ -1910,7 +1925,6 @@ void run_local_syscall(struct syscall *sysc)
 	if ((current_errstr()[0] != 0) && (!sysc->err))
 		sysc->err = EUNSPECIFIED;
 	finish_sysc(sysc, pcpui->cur_proc);
-	/* Can unpin (UMEM) at this point */
 	pcpui->cur_kthread->sysc = 0;	/* no longer working on sysc */
 }
 
@@ -1921,8 +1935,10 @@ void prep_syscalls(struct proc *p, struct syscall *sysc, unsigned int nr_syscs)
 {
 	int retval;
 	/* Careful with pcpui here, we could have migrated */
-	if (!nr_syscs)
+	if (!nr_syscs) {
+		printk("[kernel] No nr_sysc, probably a bug, user!\n");
 		return;
+	}
 	/* For all after the first call, send ourselves a KMSG (TODO). */
 	if (nr_syscs != 1)
 		warn("Only one supported (Debutante calls: %d)\n", nr_syscs);

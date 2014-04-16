@@ -2022,7 +2022,7 @@ igbepci(void)
 
 		mmio_paddr = pcidev->bar[0].mmio_base32 ? pcidev->bar[0].mmio_base32 : 
 		                                          pcidev->bar[0].mmio_base64;
-		mem = (void*)vmap_pmem(mmio_paddr, pcidev->bar[0].mmio_sz);
+		mem = (void*)vmap_pmem_nocache(mmio_paddr, pcidev->bar[0].mmio_sz);
 		if(mem == NULL){
 			printd("igbe: can't map %p\n", pcidev->bar[0].mmio_base32);
 			continue;
@@ -2102,17 +2102,15 @@ igbepnp(struct ether* edev)
 	edev->ctlr = ctlr;
 	edev->port = ctlr->port;
 	edev->irq = ctlr->pci->irqline;
+	edev->tbdf = MKBUS(BusPCI, ctlr->pci->bus, ctlr->pci->dev, ctlr->pci->func);
 	edev->netif.mbps = 1000;
 	memmove(edev->ea, ctlr->ra, Eaddrlen);
 
 	/*
 	 * Linkage to the generic ethernet driver.
 	 */
-	edev->tbdf = MKBUS(BusPCI, ctlr->pci->bus, ctlr->pci->dev,
-	                   ctlr->pci->func);
 	edev->attach = igbeattach;
 	edev->transmit = igbetransmit;
-	edev->interrupt = igbeinterrupt;
 	edev->ifstat = igbeifstat;
 	edev->ctl = igbectl;
 	edev->shutdown = igbeshutdown;
@@ -2121,6 +2119,7 @@ igbepnp(struct ether* edev)
 	edev->netif.promiscuous = igbepromiscuous;
 	edev->netif.multicast = igbemulticast;
 
+	register_irq(edev->irq, igbeinterrupt, edev, edev->tbdf);
 	return 0;
 }
 

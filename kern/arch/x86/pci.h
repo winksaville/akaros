@@ -9,6 +9,7 @@
 
 #include <ros/common.h>
 #include <sys/queue.h>
+#include <atomic.h>
 
 #define pci_debug(...)  printk(__VA_ARGS__)  
 
@@ -308,29 +309,6 @@
 #define  PCI_AF_STATUS_TP	0x01
 #define PCI_CAP_AF_SIZEOF	6	/* size of AF registers */
 
-/* this part of the file is from linux, with an odd copyright. */
-/*
- * Copyright (C) 2003-2004 Intel
- * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
- */
-
-#define msi_control_reg(base)		(base + PCI_MSI_FLAGS)
-#define msi_lower_address_reg(base)	(base + PCI_MSI_ADDRESS_LO)
-#define msi_upper_address_reg(base)	(base + PCI_MSI_ADDRESS_HI)
-#define msi_data_reg(base, is64bit)	\
-	(base + ((is64bit == 1) ? PCI_MSI_DATA_64 : PCI_MSI_DATA_32))
-#define msi_mask_reg(base, is64bit)	\
-	(base + ((is64bit == 1) ? PCI_MSI_MASK_64 : PCI_MSI_MASK_32))
-#define is_64bit_address(control)	(!!(control & PCI_MSI_FLAGS_64BIT))
-#define is_mask_bit_support(control)	(!!(control & PCI_MSI_FLAGS_MASKBIT))
-
-#define msix_table_offset_reg(base)	(base + PCI_MSIX_TABLE)
-#define msix_pba_offset_reg(base)	(base + PCI_MSIX_PBA)
-#define msix_table_size(control) 	((control & PCI_MSIX_FLAGS_QSIZE)+1)
-#define multi_msix_capable(control)	msix_table_size((control))
-
-/* end odd copyright. */
-
 struct pci_bar {
 	uint32_t					raw_bar;
 	uint32_t					pio_base;
@@ -339,10 +317,10 @@ struct pci_bar {
 	uint32_t					mmio_sz;
 };
 
-/* Struct for some meager contents of a PCI device */
 struct pci_device {
 	STAILQ_ENTRY(pci_device)	all_dev;	/* list of all devices */
 	SLIST_ENTRY(pci_device)		irq_dev;	/* list of all devs off an irq */
+	spinlock_t					lock;
 	bool						in_use;		/* prevent double discovery */
 	uint8_t						bus;
 	uint8_t						dev;
@@ -355,23 +333,52 @@ struct pci_device {
 	uint8_t						class;
 	uint8_t						subclass;
 	uint8_t						progif;
+	bool						msi_ready;
 	uint32_t					msi_msg_addr_hi;
 	uint32_t					msi_msg_addr_lo;
 	uint32_t					msi_msg_data;
 	uint8_t						nr_bars;
 	struct pci_bar				bar[MAX_PCI_BAR];
 	uint32_t					caps[PCI_CAP_ID_MAX + 1];
-	/* for MSI-X we might have allocated two physically contiguous pages. */
-	void *                                          msix;
-	int                                             msixbar;
-	int                                             msixready;
-	int                                             msixsize;
+	uintptr_t					msix_tbl_paddr;
+	uintptr_t					msix_tbl_vaddr;
+	uintptr_t					msix_pba_paddr;
+	uintptr_t					msix_pba_vaddr;
+	unsigned int				msix_nr_vec;
+	bool						msix_ready;
+};
+
+struct msix_entry {
+	uint32_t addr_lo, addr_hi, data, vector;
+};
+
+struct msix_irq_vector {
+	struct pci_device *pcidev;
+	struct msix_entry *entry;
+	uint32_t addr_lo;
+	uint32_t addr_hi;
+	uint32_t data;
 };
 
 /* List of all discovered devices */
 STAILQ_HEAD(pcidev_stailq, pci_device);
 SLIST_HEAD(pcidev_slist, pci_device);
 extern struct pcidev_stailq pci_devices;
+
+/* Sync rules for PCI: once a device is added to the list, it is never removed,
+ * and its read-only fields can be accessed at any time.  There is no need for
+ * refcnts or things like that.
+ *
+ * The device list is built early on when we're single threaded, so I'm not
+ * bothering with locks for that yet.  Append-only, singly-linked-list reads
+ * don't need a lock either.
+ *
+ * Other per-device accesses (like read-modify-writes to config space or MSI
+ * fields) require the device's lock.  If we ever want to unplug, we'll probably
+ * work out an RCU-like scheme for the pci_devices list.
+ *
+ * Note this is in addition to the config space global locking done by every
+ * pci_read or write call. */
 
 void pci_init(void);
 void pcidev_print_info(struct pci_device *pcidev, int verbosity);
@@ -395,30 +402,21 @@ void pcidev_write16(struct pci_device *pcidev, uint32_t offset, uint16_t value);
 uint8_t pcidev_read8(struct pci_device *pcidev, uint32_t offset);
 void pcidev_write8(struct pci_device *pcidev, uint32_t offset, uint8_t value);
 
-/* BAR helpers, some more helpful than others. */
-uint32_t pci_membar_get_sz(struct pci_device *pcidev, int bar);
-uint32_t pci_getbar(struct pci_device *pcidev, unsigned int bar);
-bool pci_is_iobar(uint32_t bar);
-bool pci_is_membar32(uint32_t bar);
-bool pci_is_membar64(uint32_t bar);
-uint32_t pci_getmembar32(uint32_t bar);
-uint32_t pci_getiobar32(uint32_t bar);
-
 /* Other common PCI functions */
 void pci_set_bus_master(struct pci_device *pcidev);
 void pci_clr_bus_master(struct pci_device *pcidev);
 struct pci_device *pci_match_tbdf(int tbdf);
+uintptr_t pci_get_membar(struct pci_device *pcidev, int bir);
 
 /* MSI functions, msi.c */
 int pci_msi_enable(struct pci_device *p, uint64_t vec);
-int pci_msix_enable(struct pci_device *p, uint64_t vec);
-
-/* MSI irq handler functions, msi.c */
-struct irq_handler; /* include loops */
-void msi_mask_irq(struct irq_handler *irq_h, int apic_vector);
-void msi_unmask_irq(struct irq_handler *irq_h, int apic_vector);
-int msi_route_irq(struct irq_handler *irq_h, int apic_vector, int dest);
-int pci_find_unused_bars(struct pci_device *dev, int *bars, int need);
+struct msix_irq_vector *pci_msix_enable(struct pci_device *p, uint64_t vec);
+void pci_msi_mask(struct pci_device *p);
+void pci_msi_unmask(struct pci_device *p);
+void pci_msi_route(struct pci_device *p, int dest);
+void pci_msix_mask_vector(struct msix_irq_vector *linkage);
+void pci_msix_unmask_vector(struct msix_irq_vector *linkage);
+void pci_msix_route_vector(struct msix_irq_vector *linkage, int dest);
 
 /* TODO: this is quite the Hacke */
 #define explode_tbdf(tbdf) {pcidev.bus = tbdf >> 16;\
