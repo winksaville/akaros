@@ -34,7 +34,7 @@
 #include <time.h>
 #include <ros/arch/membar.h>
 
-char *kern_test_msg;
+char *kern_test_msg; // Variable defined in test_infrastructure.h.
 
 
 void postboot_kernel_tests(void)
@@ -47,11 +47,17 @@ void postboot_kernel_tests(void)
 	for (int i=0; i<num_pb_kernel_tests; i++) {
 		struct pb_kernel_test *test = &pb_kernel_tests[i];
 		if (test->enabled) {
+			uint64_t start = read_tsc();
 			bool result = test->func();
+			uint64_t end = read_tsc();
+			uint64_t et_ms = tsc2msec(end - start) % 1000;
+			uint64_t et_s = tsc2sec(end - start);
+
 			if (result) {
-				printk("\tPASSED   [%s]\n", test->name);
+				printk("\tPASSED   [%s](%llu.%llus)\n", test->name, et_s, et_ms);
 			} else {
-				printk("\tFAILED   [%s]   %s\n", test->name, kern_test_msg);
+				printk("\tFAILED   [%s](%llu.%llus)  %s\n", test->name, et_s, 
+				       et_ms, kern_test_msg);
 				kfree(kern_test_msg);
 			}
 		} else {

@@ -26,10 +26,10 @@ class TestSuite() :
 		self.failures_num = 0
 		self.skipped_num = 0
 
-	def add_test_case(self, name, status, failure_msg=None) :
+	def add_test_case(self, name, status, el_time=None, failure_msg=None) :
 		"""Adds a test case to the suite.
 		"""
-		test_case = TestCase(self, name, status, failure_msg)
+		test_case = TestCase(self, name, status, el_time, failure_msg)
 		self.test_cases.append(test_case)
 
 		if status == 'DISABLED' :
@@ -60,10 +60,12 @@ class TestSuite() :
 class TestCase() :
 	"""Represents a test case, and has ability to print it into a markup page.
 	"""
-	def __init__(self, suite, name, status, failure_msg=None) :
+	def __init__(self, suite, name, status, el_time=None, failure_msg=None) :
 		self.suite = suite
 		self.name = name
 		self.status = status
+		if self.status in ['PASSED', 'FAILED'] :
+			self.el_time = el_time
 		if self.status == 'FAILED' :
 			self.failure_msg = failure_msg
 
@@ -73,7 +75,11 @@ class TestCase() :
 		"""
 		full_name = self.suite.name + '.' + self.suite.class_name
 
-		report.testcase.open(classname=full_name, name=self.name)
+		if self.status in ['PASSED', 'FAILED'] :
+			report.testcase.open(classname=full_name, name=self.name, \
+			                     time=self.el_time)
+		else :
+			report.testcase.open(classname=full_name, name=self.name)
 
 		if self.status == 'DISABLED' :
 			report.skipped.open(type='DISABLED', message='Disabled')
@@ -93,15 +99,16 @@ class TestParser() :
 	Tests must be printed on to a file (specified by test_output_path) with the
 	following format:
 	<-- BEGIN_{test_suite_name}_{test_class_name}_TESTS -->
-		(PASSED | FAILED | DISABLED) [{test_case_name}] (?: {failure_msg})
-		(PASSED | FAILED | DISABLED) [{test_case_name}] (?: {failure_msg})
+		(PASSED|FAILED|DISABLED) [{test_case_name}]({test_et}s)? {failure_msg}?
+		(PASSED|FAILED|DISABLED) [{test_case_name}]({test_et}s)? {failure_msg}?
 		...
 	<-- END_{test_suite_name}_{test_class_name}_TESTS -->
 
 	For example:
 	<-- BEGIN_KERNEL_PB_TESTS -->
-		PASSED   [test_easy_to_pass]
-		FAILED   [test_will_fail]   This test does super complicated stuff.
+		PASSED   [test_easy_to_pass](1.000s)
+		FAILED   [test_will_fail](0.01s)   This test should do X and Y.
+		DISABLED [test_useless]
 		...
 	<-- END_KERNEL_PB_TESTS -->
 	"""
@@ -142,8 +149,13 @@ class TestParser() :
 		matchRes = re.match(regex, line)
 		return matchRes.group(1)
 
+	def __extract_test_elapsed_time(self, line) :
+		regex= r'^\s*(?:PASSED|FAILED)\s*\[(?:[a-zA-Z_-]+)\]\(([0-9\.]+)s\).*$'
+		matchRes = re.match(regex, line)
+		return matchRes.group(1)
+
 	def __extract_test_fail_msg(self, line) :
-		regex = r'^\s*(?:[A-Z]+)\s*\[(?:[a-zA-Z_-]+)\]\s*(.*)$'
+		regex = r'^\s*FAILED\s*\[(?:[a-zA-Z_-]+)\](?:\(.*\))?\s+(.*)$'
 		matchRes = re.match(regex, line)
 		return matchRes.group(1)
 
@@ -153,7 +165,8 @@ class TestParser() :
 			First, True if there was a next test and we had not reached the end.
 			Second, a String with the name of the test.
 			Third, result of the test (PASSED, FAILED, DISABLED).
-			Fourth, message of a failed test.
+			Fourth, time elapsed in seconds, with 3 decimals.
+			Fifth, message of a failed test.
 		"""
 		# Look for test.
 		line = ''
@@ -163,14 +176,16 @@ class TestParser() :
 				return False, '', '', ''
 
 		if (re.match(self.regex_test_end, line)) :
-			return False, '', '', ''
+			return False, '', '', 0, ''
 		else :
 			name = self.__extract_test_name(line)
 			res = self.__extract_test_result(line)
+			time = self.__extract_test_elapsed_time(line) \
+			       if res in ['FAILED', 'PASSED'] else None
 			msg = self.__extract_test_fail_msg(line) if res == 'FAILED' \
-			else None
+			      else None
 			
-			return True, name, res, msg
+			return True, name, res, time, msg
 
 	def __cleanup(self) :
 		self.test_output.close()
@@ -180,9 +195,10 @@ class TestParser() :
 
 		end_not_reached = True
 		while end_not_reached :
-			end_not_reached, test_name, test_res, fail_msg = self.__next_test()
+			end_not_reached, test_name, test_res, test_et, fail_msg \
+			    = self.__next_test()
 			if end_not_reached :
-				test_suite.add_test_case(test_name, test_res, fail_msg)
+				test_suite.add_test_case(test_name, test_res, test_et, fail_msg)
 		
 		self.__cleanup()
 		
