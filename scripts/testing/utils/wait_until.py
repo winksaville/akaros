@@ -1,9 +1,10 @@
 #!/usr/bin/python
 """This script keeps running until one of the two following conditions occur:
 1) A line in the file specified by argv[1] contains argv[2] => This will exit
-   with a result code of 0.
+   with a result code of 0 and print SUCCESSS.
 2) argv[3] seconds or more occur since invoking the script => This will exit
-   with a result code of 1.
+   with a result code of 0 (because Jenkins would autokill the build if we
+   returned an error code) and print TIMEOUT.
 
 Please note:
     The timeout specified by argv[3] may be checked with a precision of up to 5
@@ -64,8 +65,10 @@ def main() :
 
 
 		if (time.time() >= timeout_time) :
-			print "[EXITING]: Time-out, %d seconds elapsed" % MAX_TIME_TO_RUN
-			exit(1)
+			print "TIMEOUT"
+			exit(0)
+
+	print "SUCCESS"
 	exit(0)
 
 main()

@@ -155,18 +155,25 @@ function run_qemu() {
 
 	# TODO: Rather than finishing after Kernel PB Tests, put a generic 
 	#       "C'est fini" statement somewhere and look for it
-	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_KERNEL_POSTBOOT_TESTS \
-	    ${MAX_WAIT:-100}
+	WAIT_RESULT=`$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_KERNEL_POSTBOOT_TESTS \
+	    ${MAX_RUN_TIME:-100}`
 
 	# Extract Qemu_launcher PID
-	QEMU_PID=$(ps --ppid $MAKE_PID | grep qemu_launcher | \
-	           sed -e 's/^\s*//' | cut -d' ' -f1)
+	QEMU_PID=`ps --ppid $MAKE_PID | grep qemu_launcher | sed -e 's/^\s*//' | \
+	          cut -d' ' -f1`
 
+	# To kill qemu we need to send a USR1 signal to Qemu_launcher.
 	kill -10 $QEMU_PID
 
 	wait $MAKE_PID
 
 	echo -e "[RUN_AKAROS_IN_QEMU]: End\n"
+
+	# If the run was terminated via a timeout, then we finish with an error.
+	if [[ "$WAIT_RESULT" == TIMEOUT ]]; then
+		echo "AKAROS was terminated after running for $MAX_RUN_TIME seconds."
+		exit 1
+	fi
 }
 
 
