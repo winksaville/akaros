@@ -164,8 +164,8 @@ function build_busybox() {
 	# Build busybox and copy it into kfs
 	cd $BUSYBOX_DIR
 	make
-	cp busybox_unstripped ../kern/kfs/bin/busybox
-	cd ../
+	cp busybox_unstripped ../../kern/kfs/bin/busybox
+	cd ../../
 
 	# Recompile kernel to include busybox
 	make
