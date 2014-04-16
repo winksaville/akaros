@@ -195,7 +195,7 @@ KERNEL_PB_TESTS_SUITE_NAME = 'KERNEL'
 KERNEL_PB_TESTS_CLASS_NAME = 'POSTBOOT'
 
 def save_report(dir, filename, report) :
-	filepath = dir + '/' + filename + '.xml'
+	filepath = dir + '/' + filename + '_TESTS.xml'
 	report_file = open(filepath, 'w+')
 	report_file.write(report)
 	report_file.flush()
