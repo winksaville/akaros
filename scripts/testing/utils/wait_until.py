@@ -1,6 +1,14 @@
 #!/usr/bin/python
-"""Reads a file specified by arg1 until it detects that a line with arg2 is
-printed into it.
+"""This script keeps running until one of the two following conditions occur:
+1) A line in the file specified by argv[1] contains argv[2] => This will exit
+   with a result code of 0.
+2) argv[3] seconds or more occur since invoking the script => This will exit
+   with a result code of 1.
+
+Please note:
+    The timeout specified by argv[3] may be checked with a precision of up to 5
+    seconds, so it may be possible that the script runs for argv[3] + 5 secs (or
+    even a little bit more).
 """
 import sys
 import time
@@ -9,37 +17,55 @@ import re
 
 OUTPUT_FILE = sys.argv[1]
 REGEX_END_PB_KERNEL_TESTS = r'^.*' + sys.argv[2] + '.*$'
-
+MAX_TIME_TO_RUN = int(sys.argv[3])
 
 def is_end_line(line) :
+	"""Returns true if a given file contains the 'End line' string.
+	"""
+
 	if re.match(REGEX_END_PB_KERNEL_TESTS, line) :
 		return True
 	else :
 		return False
 
 def main() :
-	file = open(OUTPUT_FILE, 'r')
+	"""Opens the OUTPUT_FILE and continuously reads lines from it until either
+	there are no more lines or the end line is reached. In the former case, it
+	waits an exponentially increasing time interval for more lines to be printed
+	onto the file.
 
-	# Min and max waiting times between reading two lines of the file.
-	MIN_WAITING_TIME = 0.1
-	MAX_WAITING_TIME = 5
-	WAITING_TIME_EXPONENT_BASE = 1.5 # Times what the waiting time is increased.
+	If MAX_TIME_TO_RUN seconds are elapsed, then the script also terminates, 
+	with an error condition.
+	"""
+	timeout_time = time.time() + MAX_TIME_TO_RUN
 
-	wait_time = 2
+	output_file = open(OUTPUT_FILE, 'r')
+
+	# Min and max waiting times (sec.) between reading two lines of the file.
+	MIN_READ_DELAY = 0.1
+	MAX_READ_DELAY = 5
+	READ_DELAY_INCREM_FACTOR = 1.5 # Times what the read delay is increased.
+
+	secs_before_read = 2
 	end_not_reached = True
 
 	while end_not_reached :
-		line = file.readline()
+		line = output_file.readline()
 		
 		if (len(line) == 0) :
-			time.sleep(wait_time)
-			# Sleep with exponential decay
-			wait_time = MAX_WAITING_TIME if (wait_time > MAX_WAITING_TIME) \
-				else wait_time * WAITING_TIME_EXPONENT_BASE
+			time.sleep(secs_before_read)
+			# Sleep with exponential backoff.
+			secs_before_read = MAX_READ_DELAY \
+			                   if (secs_before_read > MAX_READ_DELAY) \
+			                   else secs_before_read * READ_DELAY_INCREM_FACTOR
 		else :
-			wait_time = MIN_WAITING_TIME
+			secs_before_read = MIN_READ_DELAY
 			end_not_reached = not is_end_line(line)
 
+
+		if (time.time() >= timeout_time) :
+			print "[EXITING]: Time-out, %d seconds elapsed" % MAX_TIME_TO_RUN
+			exit(1)
 	exit(0)
 
 main()

@@ -8,8 +8,7 @@ set -e
 
 readonly TMP_DIR=tmp
 readonly DIFF_FILE=$TMP_DIR/changes.txt
-readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt # If changed, please
-													# change .py test files too.
+readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt
 readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
 readonly SCR_DIR=scripts/testing/utils
@@ -154,10 +153,10 @@ function run_qemu() {
 	make qemu > $AKAROS_OUTPUT_FILE &
 	MAKE_PID=$!
 
-	# TODO: Add exit condition with timeout in case something breaks.
 	# TODO: Rather than finishing after Kernel PB Tests, put a generic 
 	#       "C'est fini" statement somewhere and look for it
-	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_KERNEL_POSTBOOT_TESTS
+	$SCR_WAIT_UNTIL $AKAROS_OUTPUT_FILE END_KERNEL_POSTBOOT_TESTS \
+	    ${MAX_WAIT:-100}
 
 	# Extract Qemu_launcher PID
 	QEMU_PID=$(ps --ppid $MAKE_PID | grep qemu_launcher | \
