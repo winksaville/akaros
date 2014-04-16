@@ -12,6 +12,7 @@ readonly AKAROS_OUTPUT_FILE=$TMP_DIR/akaros_out.txt
 readonly TEST_OUTPUT_DIR=output-tests
 readonly TEST_DIR=scripts/testing
 readonly SCR_DIR=scripts/testing/utils
+readonly DOWNLOADS_DIR=dl
 
 # Config files
 readonly CONF_DIR=scripts/testing/config
@@ -22,6 +23,10 @@ readonly SCR_WAIT_UNTIL=$SCR_DIR/wait_until.py
 readonly SCR_GIT_CHANGES=$SCR_DIR/changes.py
 readonly SCR_GEN_TEST_REPORTS=$SCR_DIR/test_reporter.py
 
+# Busybox settings
+readonly BUSYBOX_VERSION=1.17.3
+readonly BUSYBOX_DL_URL=http://www.busybox.net/downloads/busybox-1.17.3.tar.bz2
+readonly BUSYBOX_CONF_FILE=tools/patches/busybox-1.17.3.config
 
 ################################################################################
 ###############                   INITIAL SETUP                  ###############
@@ -32,6 +37,7 @@ if [ "$INITIAL_SETUP" == true ]; then
 	# Create directory for tests and other temp files.
 	mkdir -p $TMP_DIR
 	mkdir -p $TEST_OUTPUT_DIR
+	mkdir -p $DOWNLOADS_DIR
 
 	# Compile QEMU launcher
 	mkdir -p $WORKSPACE/install/qemu_launcher/
@@ -140,8 +146,30 @@ function build_userspace() {
 
 function build_busybox() {
 	echo -e "\n[BUILD_BUSYBOX]: Begin"
-	# TO DO
-	echo "[TO DO] Build busybox"
+	
+	BUSYBOX_DIR=busybox-$BUSYBOX_VERSION
+	
+	cd $DOWNLOADS_DIR
+	
+	# Download busybox if we do not have it yet.
+	if [[ ! -d "$BUSYBOX_DIR" ]]; then
+		echo "Trying to download from $BUSYBOX_DL_URL ..."
+		
+		wget $BUSYBOX_DL_URL -O busybox-$BUSYBOX_VERSION.tar.bz2
+		tar -jxvf busybox-$BUSYBOX_VERSION.tar.bz2
+		rm busybox-$BUSYBOX_VERSION.tar.bz2
+		cp ../$BUSYBOX_CONF_FILE $BUSYBOX_DIR/.config
+	fi
+
+	# Build busybox and copy it into kfs
+	cd $BUSYBOX_DIR
+	make
+	cp busybox_unstripped ../kern/kfs/bin/busybox
+	cd ../
+
+	# Recompile kernel to include busybox
+	make
+
 	echo -e "[BUILD_BUSYBOX]: End\n"
 }
 
@@ -189,7 +217,7 @@ if [ "$COMPILE_ALL" == true ]; then
 
 	run_qemu
 
-	# TODO: Fill AFFECTED_COMPONENTS with everything
+	AFFECTED_COMPONENTS="cross-compiler kernel userspace busybox"
 else
 	# Save changed files between last tested commit and current one.
 	git diff --stat $GIT_PREVIOUS_COMMIT $GIT_COMMIT > $DIFF_FILE
