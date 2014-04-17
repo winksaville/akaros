@@ -101,7 +101,7 @@ function build_config() {
 
 function build_cross_compiler() {
 	declare -A ARCH_SUBDIRS=( ["RISCV"]="riscv-ros-gcc" \
-	                          ["I686"] ="i686-ros-gcc" \
+	                          ["I686"]="i686-ros-gcc" \
 	                          ["X86_64"]="x86_64-ros-gcc" )
 
 	echo -e "\n[BUILD_CROSS_COMPILER]: Begin"
