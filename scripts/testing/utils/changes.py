@@ -3,9 +3,10 @@
 shown in the diff. Extracts the directory paths of those files, and decides
 which components of AKAROS should be compiled and tested, accordingly.
 """
-import sys
-import re
 import json
+import os
+import re
+import sys
 
 REGEX_EXTRACT_PATH_FROM_GIT_DIFF_LINE = r'^(?:\s)*([^\s]*)(?:\s)*\|(?:.*)\n?$'
 # Path to file with git diff
