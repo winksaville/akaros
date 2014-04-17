@@ -63,7 +63,6 @@ function add_cross_compiler_to_path() {
 	export PATH=$WORKSPACE/install/riscv-ros-gcc/bin:$PATH
 	export PATH=$WORKSPACE/install/i686-ros-gcc/bin:$PATH
 	export PATH=$WORKSPACE/install/x86_64-ros-gcc/bin:$PATH
-	export PATH=$WORKSPACE/install/x86_64-ros-gcc-native/bin:$PATH
 }
 
 # Clean these two directories
@@ -77,38 +76,65 @@ add_cross_compiler_to_path
 
 function build_config() {
 	echo -e "\n[SET_MAKE_CONFIG]: Begin"
-	make ARCH=x86 defconfig
+
+	# Begin with default configuration.
+	case "$COMPILATION_ARCH" in
+	RISCV)  make ARCH=riscv defconfig
+	    ;;
+	I686)  make ARCH=x86 defconfig
+		   sed -i -e 's/CONFIG_64BIT=y/# CONFIG_64BIT is not set/' \
+		          -e 's/# CONFIG_X86_32 is not set/CONFIG_X86_32=y/' \
+		          -e 's/CONFIG_X86_64=y/# CONFIG_X86_64 is not set/' \
+		          .config
+	    ;;
+	X86_64)  make ARCH=x86 defconfig
+	    ;;
+	esac
 
 	# Enable postboot kernel tests to run.
 	# These don't take much to execute so we can run them always and just parse
-	# results if needed
+	# results if needed.
 	echo "CONFIG_POSTBOOT_KERNEL_TESTING=y" >> .config
 
 	echo -e "[SET_MAKE_CONFIG]: End\n"
 }
 
 function build_cross_compiler() {
+	declare -A ARCH_SUBDIRS=( ["RISCV"]="riscv-ros-gcc" \
+	                          ["I686"] ="i686-ros-gcc" \
+	                          ["X86_64"]="x86_64-ros-gcc" )
+
 	echo -e "\n[BUILD_CROSS_COMPILER]: Begin"
 
 	cd tools/compilers/gcc-glibc
 
+	# Clean everything up
+	# TODO: Possibly down the line try to optimize this to only clean the 
+	# architecture that we need to rebuild.
+	make clean
+
 	# Define cross compiler Makelocal.
 	echo "# Number of make jobs to spawn.  
 MAKE_JOBS := 3
-RISCV_INSTDIR         := $WORKSPACE/install/riscv-ros-gcc/
-I686_INSTDIR          := $WORKSPACE/install/i686-ros-gcc/
-X86_64_INSTDIR        := $WORKSPACE/install/x86_64-ros-gcc/
-X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
+RISCV_INSTDIR         := $WORKSPACE/install/${ARCH_SUBDIRS["RISCV"]}/
+I686_INSTDIR          := $WORKSPACE/install/${ARCH_SUBDIRS["I686"]}/
+X86_64_INSTDIR        := $WORKSPACE/install/${ARCH_SUBDIRS["X86_64"]}/
 " > Makelocal
 
-	# Directories where the cross compiler will be installed.
-	mkdir -p $WORKSPACE/install/riscv-ros-gcc/
-	mkdir -p $WORKSPACE/install/i686-ros-gcc/
-	mkdir -p $WORKSPACE/install/x86_64-ros-gcc/
-	mkdir -p $WORKSPACE/install/x86_64-ros-gcc-native/
+	# Create / clean directory where the cross compiler will be installed.
+	CROSS_COMP_DIR=$WORKSPACE/install/${ARCH_SUBDIRS["$COMPILATION_ARCH"]}/
+	mkdir -p CROSS_COMP_DIR
+	rm -rf CROSS_COMP_DIR*
 
 	# Compile cross compiler.
-	make x86_64
+	case "$COMPILATION_ARCH" in
+	RISCV)  make riscv
+	    ;;
+	I686)  make i686
+	    ;;
+	X86_64)  make x86_64
+	    ;;
+	esac
 
 	# Go back to root directory.
 	cd ../../..
@@ -117,6 +143,7 @@ X86_64_NATIVE_INSTDIR := $WORKSPACE/install/x86_64-ros-gcc-native/
 
 function build_kernel() {
 	echo -e "\n[BUILD_KERNEL]: Begin"
+	make clean
 	make
 	echo -e "[BUILD_KERNEL]: End\n"
 }
@@ -131,9 +158,11 @@ function build_userspace() {
 	cd -
 
 	# Build and install user libs.
+	make userclean
 	make install-libs
 
 	# Compile tests.
+	make testclean
 	make tests
 
 	# Fill memory with tests.
@@ -173,6 +202,7 @@ function build_busybox() {
 	echo -e "[BUILD_BUSYBOX]: End\n"
 }
 
+# TODO: This won't work for RISCV, it must be changed to whatever is used.
 function run_qemu() {
 	echo -e "\n[RUN_AKAROS_IN_QEMU]: Begin"
 

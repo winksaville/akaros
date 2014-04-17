@@ -17,14 +17,14 @@ import re
 
 
 OUTPUT_FILE = sys.argv[1]
-REGEX_END_PB_KERNEL_TESTS = r'^.*' + sys.argv[2] + '.*$'
+REGEX_END_LINE = r'^.*' + sys.argv[2] + '.*$'
 MAX_TIME_TO_RUN = int(sys.argv[3])
 
 def is_end_line(line) :
 	"""Returns true if a given file contains the 'End line' string.
 	"""
 
-	if re.match(REGEX_END_PB_KERNEL_TESTS, line) :
+	if re.match(REGEX_END_LINE, line) :
 		return True
 	else :
 		return False

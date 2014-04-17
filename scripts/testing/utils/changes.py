@@ -16,9 +16,7 @@ CONFIG_COMP_COMPONENTS_FILE = sys.argv[2]
 # Arguments to fill variable paths with. Useful, for example, to define a path
 # that will vary whether we are compiling an architecture or another.
 # TODO(alfongj): Get these from Env var or sys.argv
-PATH_ARGS = {
-	"arch": "x86"
-}
+
 
 """The following is the definition of the given components of AKAROS (filled in
 from CONFIG_COMP_COMPONENTS_FILE (which should be 
@@ -43,6 +41,26 @@ akaros_components = {}
 
 affected_components = {}
 
+def get_variable_path_args() :
+	"""Returns dict of arguments to use in the load_component_config function
+	to generate dynamic paths. Currently it is only being used to change a 
+	subdirectory in one of the paths depending on the architecture being 
+	tested.
+	"""
+	PATH_ARGS = {
+		"I686": {
+			"arch": "x86"
+		},
+		"X86_64": {
+			"arch": "x86"
+		},
+		"RISCV": {
+			"arch": "riscv"
+		}
+	}
+	compilation_arch = os.getenv('COMPILATION_ARCH', 'I686')
+	return PATH_ARGS[compilation_arch]
+
 def load_component_config() :
 	"""Loads ../config/compilation_components.json object, which contains a
 	list of all the different AKAROS compilation components along with the paths
@@ -52,11 +70,13 @@ def load_component_config() :
 	# Read config file.
 	with open(CONFIG_COMP_COMPONENTS_FILE, 'r') as conf_file :
 		conf_file_contents = conf_file.read().replace('\n', '')
-	
+
 	# Replace variable arguments.
-	for arg in PATH_ARGS :
+	var_path_args = get_variable_path_args()
+	for arg in var_path_args :
 		wrapped_arg = "{{" + arg + "}}"
-		conf_file_contents = conf_file_contents.replace(wrapped_arg, PATH_ARGS[arg])
+		conf_file_contents = conf_file_contents.replace(wrapped_arg, 
+		                                                var_path_args[arg])
 
 	# Parse JSON into python object.
 	global akaros_components
