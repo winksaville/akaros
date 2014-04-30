@@ -10,7 +10,7 @@
 # 	directory, via the KBUILD_OUTPUT variable.  This induces a recursive make
 # 	in the output directory.  I mucked with it for a little, but didn't get it
 # 	to work quite right.  Also, there will be other Akaros issues since this
-# 	makefile is also used for userspace and tests.  For now, I'm leaving things
+# 	makefile is also used for userspace and apps.  For now, I'm leaving things
 # 	the default Linux way.
 #	- Kconfig wants to use include/ in the root directory.  We can change some
 #	of the default settings that silentoldconfig uses, but I'll leave it as-is
@@ -32,7 +32,7 @@
 #	- It's a bit crazy that we build symlinks for parlib, instead of it
 #	managing its own links based on $(ARCH)
 #
-#	- Consider using Kbuild to build userspace and tests
+#	- Consider using Kbuild to build userspace and apps
 #
 #	- There are a few other TODOs sprinkled throughout the makefile.
 
@@ -68,7 +68,7 @@ OBJDIR ?= obj
 # Make targets that need these symlinks (like building userspace, the kernel,
 # configs, etc, should depend on symlinks.
 
-clean-goals := clean mrproper realclean userclean testclean doxyclean objclean
+clean-goals := clean mrproper realclean userclean appsclean doxyclean objclean
 non-build-goals := %config $(clean-goals)
 ifeq ($(filter $(non-build-goals), $(MAKECMDGOALS)),)
 goals-has-build-targets := 1
@@ -351,7 +351,7 @@ export CFLAGS_USER CXXFLAGS_USER
 # =========================================================================
 
 # The user can override this, though it won't apply for any of the in-tree
-# kernel build output.  Right now, it's only passed down to tests/
+# kernel build output.  Right now, it's only passed down to apps/
 dummy-1 := $(shell mkdir -p $(OBJDIR)/kern/)
 
 # Don't need to export these, since the Makelocal is included.
@@ -528,10 +528,10 @@ endif #ifeq ($(mixed-targets),1)
 
 # Akaros Userspace Building and Misc Helpers
 # =========================================================================
-# Recursively make user libraries and tests.
+# Recursively make user libraries and apps.
 #
 # User library makefiles are built to expect to be called from their own
-# directories.  The test code can be called from the root directory.
+# directories.  The apps code can be called from the root directory.
 
 # List all userspace directories here, and state any dependencies between them,
 # such as how pthread depends on parlib.
@@ -551,17 +551,17 @@ $(user-dirs):
 
 PHONY += userclean $(clean-user-dirs)
 clean-user-dirs := $(addprefix _clean_user_,$(user-dirs))
-userclean: $(clean-user-dirs) testclean
+userclean: $(clean-user-dirs) appsclean
 
 $(clean-user-dirs):
 	@cd user/$(patsubst _clean_user_%,%,$@) && $(MAKE) clean
 
-tests/: tests
-tests: install-libs
-	@$(MAKE) -f tests/Makefile
+apps/: apps
+apps: install-libs
+	@$(MAKE) -f apps/Makefile
 
-testclean:
-	@$(MAKE) -f tests/Makefile clean
+appsclean:
+	@$(MAKE) -f apps/Makefile clean
 
 # KFS related stuff
 PHONY += fill-kfs unfill-kfs
@@ -570,14 +570,14 @@ XCC_SO_FILES = $(addprefix $(XCC_TARGET_ROOT)/lib/, *.so*)
 $(OBJDIR)/.dont-force-fill-kfs:
 	$(Q)rm -rf $(addprefix $(FIRST_KFS_PATH)/lib/, $(notdir $(XCC_SO_FILES)))
 	@echo "Cross Compiler 'so' files removed from KFS"
-	@$(MAKE) -f tests/Makefile unfill-kfs
+	@$(MAKE) -f apps/Makefile unfill-kfs
 	@touch $(OBJDIR)/.dont-force-fill-kfs
 
 fill-kfs: $(OBJDIR)/.dont-force-fill-kfs install-libs
 	@mkdir -p $(FIRST_KFS_PATH)/lib
 	$(Q)cp -uP $(XCC_SO_FILES) $(FIRST_KFS_PATH)/lib
 	@echo "Cross Compiler 'so' files installed to KFS"
-	@$(MAKE) -f tests/Makefile fill-kfs
+	@$(MAKE) -f apps/Makefile fill-kfs
 
 # Use doxygen to make documentation for ROS (Untested since 2010 or so)
 doxygen-dir := $(CUR_DIR)/Documentation/doxygen
