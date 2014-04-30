@@ -48,14 +48,12 @@ $(OBJDIR)/$(APPS_DIR)/%: $(APPS_LDDEPENDS_CPP)
 all: $(APPS_EXECS)
 	@:
 
-fill-kfs: $(APPS_EXECS)
+install: $(APPS_EXECS)
 	@mkdir -p $(FIRST_KFS_PATH)/bin
 	$(Q)cp -uP $^ $(FIRST_KFS_PATH)/bin
-	@echo "User space apps installed to KFS"
 
-unfill-kfs:
+uninstall:
 	$(Q)rm -rf $(addprefix $(FIRST_KFS_PATH)/bin/, $(notdir $(APPS_EXECS)))
-	@echo "User space apps removed from KFS"
 
 clean:
 	@echo + clean [APPS]

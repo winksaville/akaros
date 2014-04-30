@@ -47,6 +47,10 @@ MAKEFLAGS += -rR --no-print-directory
 PHONY := all
 all: akaros-kernel
 
+# Export the location of this top level directory
+AKAROS_ROOT = $(CURDIR)
+export AKAROS_ROOT
+
 # Setup dumping ground for object files and any temporary files we need to
 # generate for non-kbuild targets
 OBJDIR ?= obj
@@ -556,6 +560,10 @@ userclean: $(clean-user-dirs) appsclean
 $(clean-user-dirs):
 	@cd user/$(patsubst _clean_user_%,%,$@) && $(MAKE) clean
 
+PHONY += tests
+tests: $(user-dirs)
+	@cd user/$@ && $(MAKE) 
+
 apps/: apps
 apps: install-libs
 	@$(MAKE) -f apps/Makefile
@@ -570,14 +578,20 @@ XCC_SO_FILES = $(addprefix $(XCC_TARGET_ROOT)/lib/, *.so*)
 $(OBJDIR)/.dont-force-fill-kfs:
 	$(Q)rm -rf $(addprefix $(FIRST_KFS_PATH)/lib/, $(notdir $(XCC_SO_FILES)))
 	@echo "Cross Compiler 'so' files removed from KFS"
-	@$(MAKE) -f apps/Makefile unfill-kfs
+	@$(MAKE) -f apps/Makefile uninstall
+	@echo "User space apps removed from KFS"
+	@cd user/tests && $(MAKE) uninstall
+	@echo "User space tests removed from KFS"
 	@touch $(OBJDIR)/.dont-force-fill-kfs
 
 fill-kfs: $(OBJDIR)/.dont-force-fill-kfs install-libs
 	@mkdir -p $(FIRST_KFS_PATH)/lib
 	$(Q)cp -uP $(XCC_SO_FILES) $(FIRST_KFS_PATH)/lib
 	@echo "Cross Compiler 'so' files installed to KFS"
-	@$(MAKE) -f apps/Makefile fill-kfs
+	@$(MAKE) -f apps/Makefile install
+	@echo "User space apps installed to KFS"
+	@cd user/tests && $(MAKE) install
+	@echo "User space tests installed to KFS"
 
 # Use doxygen to make documentation for ROS (Untested since 2010 or so)
 doxygen-dir := $(CUR_DIR)/Documentation/doxygen
