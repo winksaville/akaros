@@ -45,8 +45,10 @@ static command_t (RO commands)[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Dump a backtrace", mon_backtrace },
+	{ "bt", "Dump a backtrace", mon_bt },
 	{ "reboot", "Take a ride to the South Bay", mon_reboot },
 	{ "showmapping", "Shows VA->PA mappings", mon_showmapping},
+	{ "sm", "Shows VA->PA mappings", mon_sm},
 	{ "setmapperm", "Sets permissions on a VA->PA mapping", mon_setmapperm},
 	{ "cpuinfo", "Prints CPU diagnostics", mon_cpuinfo},
 	{ "ps", "Prints process list", mon_ps},
@@ -55,6 +57,7 @@ static command_t (RO commands)[] = {
 	{ "bin_run", "Create and run a program from /bin", mon_bin_run},
 	{ "manager", "Run the manager", mon_manager},
 	{ "procinfo", "Show information about processes", mon_procinfo},
+	{ "kill", "Kills a process", mon_kill},
 	{ "exit", "Leave the monitor", mon_exit},
 	{ "kfunc", "Run a kernel function directly (!!!)", mon_kfunc},
 	{ "notify", "Notify a process.  Vcoreid will skip their prefs", mon_notify},
@@ -65,6 +68,7 @@ static command_t (RO commands)[] = {
 	{ "bb", "Try to run busybox (ash)", mon_bb},
 	{ "alarm", "Alarm Diagnostics", mon_alarm},
 	{ "msr", "read/write msr: msr msr [value]", mon_msr},
+	{ "db", "Misc debugging", mon_db},
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -126,7 +130,7 @@ static char RO* function_of(uint32_t address)
 }
 #endif
 
-int mon_backtrace(int argc, char **argv, struct hw_trapframe *hw_tf)
+static int __backtrace(int argc, char **argv, struct hw_trapframe *hw_tf)
 {
 	uintptr_t pc, fp;
 	if (argc == 1) {
@@ -144,6 +148,16 @@ int mon_backtrace(int argc, char **argv, struct hw_trapframe *hw_tf)
 	return 0;
 }
 
+int mon_backtrace(int argc, char **argv, struct hw_trapframe *hw_tf)
+{
+	return __backtrace(argc, argv, hw_tf);
+}
+
+int mon_bt(int argc, char **argv, struct hw_trapframe *hw_tf)
+{
+	return __backtrace(argc, argv, hw_tf);
+}
+
 int mon_reboot(int argc, char **argv, struct hw_trapframe *hw_tf)
 {
 	cprintf("[Scottish Accent]: She's goin' down, Cap'n!\n");
@@ -154,24 +168,48 @@ int mon_reboot(int argc, char **argv, struct hw_trapframe *hw_tf)
 	return 0;
 }
 
-int mon_showmapping(int argc, char **argv, struct hw_trapframe *hw_tf)
+static int __showmapping(int argc, char **argv, struct hw_trapframe *hw_tf)
 {
-	if (argc < 2) {
-		cprintf("Shows virtual -> physical mappings for a virt addr range.\n");
-		cprintf("Usage: showmapping START_ADDR [END_ADDR]\n");
-		return 1;
-	}
+	struct proc *p;
 	uintptr_t start;
 	size_t size;
-	start = ROUNDDOWN(strtol(argv[1], 0, 16), PGSIZE);
-	size = (argc == 2) ? 1 : strtol(argv[2], 0, 16) - start;
+	pde_t *pgdir;
+	pid_t pid;
+	if (argc < 3) {
+		printk("Shows virtual -> physical mappings for a virt addr range.\n");
+		printk("Usage: showmapping PID START_ADDR [END_ADDR]\n");
+		printk("    PID == 0 for the boot pgdir\n");
+		return 1;
+	}
+	pid = strtol(argv[1], 0, 10);
+	if (!pid) {
+		pgdir = boot_pgdir;
+	} else {
+		p = pid2proc(pid);
+		if (!p) {
+			printk("No proc with pid %d\n", pid);
+			return 1;
+		}
+		pgdir = p->env_pgdir;
+	}
+	start = ROUNDDOWN(strtol(argv[2], 0, 16), PGSIZE);
+	size = (argc == 3) ? 1 : strtol(argv[3], 0, 16) - start;
 	if (size/PGSIZE > 512) {
 		cprintf("Not going to do this for more than 512 items\n");
 		return 1;
 	}
-
-	show_mapping(start,size);
+	show_mapping(pgdir, start, size);
 	return 0;
+}
+
+int mon_showmapping(int argc, char **argv, struct hw_trapframe *hw_tf)
+{
+	return __showmapping(argc, argv, hw_tf);
+}
+
+int mon_sm(int argc, char **argv, struct hw_trapframe *hw_tf)
+{
+	return __showmapping(argc, argv, hw_tf);
 }
 
 int mon_setmapperm(int argc, char **argv, struct hw_trapframe *hw_tf)
@@ -383,6 +421,26 @@ int mon_procinfo(int argc, char **argv, struct hw_trapframe *hw_tf)
 		printk("Bad option\n");
 		return 1;
 	}
+	return 0;
+}
+
+int mon_kill(int argc, char **argv, struct hw_trapframe *hw_tf)
+{
+	struct proc *p;
+	int8_t irq_state = 0;
+	if (argc < 2) {
+		printk("Usage: kill PID\n");
+		return 1;
+	}
+	p = pid2proc(strtol(argv[1], 0, 0));
+	if (!p) {
+		printk("No such proc\n");
+		return 1;
+	}
+	enable_irqsave(&irq_state);
+	proc_destroy(p);
+	disable_irqsave(&irq_state);
+	proc_decref(p);
 	return 0;
 }
 
@@ -1041,4 +1099,20 @@ int mon_msr(int argc, char **argv, struct hw_trapframe *hw_tf)
 	smp_call_wait(w);
 	return 0;
 #endif
+}
+
+int mon_db(int argc, char **argv, struct hw_trapframe *hw_tf)
+{
+	if (argc < 2) {
+		printk("Usage: db OPTION\n");
+		printk("\tsem: print all semaphore info\n");
+		return 1;
+	}
+	if (!strcmp(argv[1], "sem")) {
+		print_all_sem_info();
+	} else {
+		printk("Bad option\n");
+		return 1;
+	}
+	return 0;
 }

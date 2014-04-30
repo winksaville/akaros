@@ -1,5 +1,6 @@
 *.swp
 *.swo
+*.pyc
 .bochsout
 bochs.out
 bochs.log
@@ -39,3 +40,4 @@ kern/kfs/*
 scripts/kconfig/zconf.lex.c
 kern/include/config/*
 kern/include/generated/*
+tags
