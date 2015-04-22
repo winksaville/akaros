@@ -11,13 +11,85 @@
 struct schedule_ops default_2ls_ops = {0};
 struct schedule_ops *sched_ops __attribute__((weak)) = &default_2ls_ops;
 
-__thread struct uthread *current_uthread = 0;
+__thread struct uthread * volatile current_uthread = 0;
 /* ev_q for all preempt messages (handled here to keep 2LSs from worrying
  * extensively about the details.  Will call out when necessary. */
 struct event_queue *preempt_ev_q;
 
 /* Helpers: */
+#ifndef __PIC__
+
+#define begin_safe_access_tls_vars()
+#define end_safe_access_tls_vars()
+
+#else
+
+#include <features.h>
+
+/* These macro acrobatics trick the compiler into not caching the (linear)
+ * address of TLS variables across loads/stores of the TLS descriptor, in lieu
+ * of a "TLS cmb()". */
+#define begin_safe_access_tls_vars()                                           \
+{                                                                              \
+	void __attribute__((noinline, optimize("O0")))                             \
+	safe_access_tls_var_internal() {                                           \
+		asm("");                                                               \
+
+#define end_safe_access_tls_vars()                                             \
+	} safe_access_tls_var_internal();                                          \
+}
+
+#endif // __PIC__
+
+/* Switches into the TLS 'tls_desc'.  Capable of being called from either
+ * uthread or vcore context.  Pairs with end_access_tls_vars(). */
+#define begin_access_tls_vars(tls_desc)                                        \
+{                                                                              \
+	struct uthread *caller;                                                    \
+	uint32_t vcoreid;                                                          \
+	void *temp_tls_desc;                                                       \
+	bool invcore = in_vcore_context();                                         \
+	if (!invcore) {                                                            \
+		caller = current_uthread;                                              \
+		/* If you have no current_uthread, you might be called too early in the
+		 * process's lifetime.  Make sure something like uthread_slim_init() has
+		 * been run. */                                                        \
+		assert(caller);                                                        \
+		/* We need to disable notifs here (in addition to not migrating), since
+		 * we could get interrupted when we're in the other TLS, and when the
+		 * vcore restarts us, it will put us in our old TLS, not the one we were
+		 * in when we were interrupted.  We need to not migrate, since once we
+		 * know the vcoreid, we depend on being on the same vcore throughout.*/\
+		caller->flags |= UTHREAD_DONT_MIGRATE;                                 \
+		/* Not concerned about cross-core memory ordering, so no CPU mbs needed.
+		 * The cmb is to prevent the compiler from issuing the vcore read before
+		 * the DONT_MIGRATE write. */                                          \
+		cmb();                                                                 \
+		vcoreid = vcore_id();                                                  \
+		disable_notifs(vcoreid);                                               \
+	} else { /* vcore context */                                               \
+		vcoreid = vcore_id();                                                  \
+	}                                                                          \
+	temp_tls_desc = get_tls_desc(vcoreid);                                     \
+	set_tls_desc(tls_desc, vcoreid);                                           \
+	begin_safe_access_tls_vars();
+
+#define end_access_tls_vars()                                                  \
+	end_safe_access_tls_vars();                                                \
+	set_tls_desc(temp_tls_desc, vcoreid);                                      \
+	if (!invcore) {                                                            \
+		/* Note we reenable migration before enabling notifs, which is reverse
+		 * from how we disabled notifs.  We must enabling migration before
+		 * enabling notifs.  See 6c7fb12 and 5e4825eb4 for details. */         \
+		caller->flags &= ~UTHREAD_DONT_MIGRATE;                                \
+		cmb();	/* turn off DONT_MIGRATE before enabling notifs */             \
+		if (in_multi_mode())                                                   \
+			enable_notifs(vcoreid);                                            \
+	}                                                                          \
+}
+
 #define UTH_TLSDESC_NOTLS (void*)(-1)
+
 static inline bool __uthread_has_tls(struct uthread *uthread);
 static int __uthread_allocate_tls(struct uthread *uthread);
 static int __uthread_reinit_tls(struct uthread *uthread);
@@ -69,7 +141,7 @@ static void uthread_manage_thread0(struct uthread *uthread)
 		free(current_uthread);
 	current_uthread = uthread;
 	end_safe_access_tls_vars();
-	set_tls_desc(uthread->tls_desc, 0);
+	set_tls_desc(current_uthread->tls_desc, 0);
 	begin_safe_access_tls_vars();
 	__vcoreid = 0;	/* setting the uthread's TLS var */
 	assert(!in_vcore_context());
@@ -285,7 +357,7 @@ void uthread_has_blocked(struct uthread *uthread, int flags)
 static void __attribute__((noinline, noreturn))
 __uthread_yield(void)
 {
-	struct uthread *uthread = current_uthread;
+	struct uthread * volatile uthread = current_uthread;
 	assert(in_vcore_context());
 	assert(!notif_is_enabled(vcore_id()));
 	/* Note: we no longer care if the thread is exiting, the 2LS will call
@@ -320,7 +392,7 @@ __uthread_yield(void)
 void uthread_yield(bool save_state, void (*yield_func)(struct uthread*, void*),
                    void *yield_arg)
 {
-	struct uthread *uthread = current_uthread;
+	struct uthread * volatile uthread = current_uthread;
 	volatile bool yielding = TRUE; /* signal to short circuit when restarting */
 	assert(!in_vcore_context());
 	assert(uthread->state == UT_RUNNING);
@@ -473,9 +545,12 @@ void highjack_current_uthread(struct uthread *uthread)
 	current_uthread->state = UT_NOT_RUNNING;
 	uthread->state = UT_RUNNING;
 	/* Make sure the vcore is tracking the new uthread struct */
-	if (__uthread_has_tls(current_uthread))
-		vcore_set_tls_var(current_uthread, uthread);
-	else
+	if (__uthread_has_tls(current_uthread)) {
+		struct uthread *__uthread = uthread;
+		begin_access_tls_vars(get_vcpd_tls_desc(vcoreid));
+		current_uthread = __uthread;
+		end_access_tls_vars();
+	} else
 		current_uthread = uthread;
 	/* and make sure we are using the correct TLS for the new uthread */
 	if (__uthread_has_tls(uthread)) {
@@ -516,7 +591,7 @@ static void handle_refl_fault(struct uthread *uth, struct user_context *ctx)
  * you've set it to be current. */
 void run_current_uthread(void)
 {
-	struct uthread *uth;
+	struct uthread * volatile uth = 0;
 	uint32_t vcoreid = vcore_id();
 	struct preempt_data *vcpd = vcpd_of(vcoreid);
 	assert(current_uthread);
@@ -524,7 +599,7 @@ void run_current_uthread(void)
 	/* Uth was already running, should not have been saved */
 	assert(!(current_uthread->flags & UTHREAD_SAVED));
 	assert(!(current_uthread->flags & UTHREAD_FPSAVED));
-	printd("[U] Vcore %d is restarting uthread %08p\n", vcoreid,
+	printd("[U] Vcore %d is restarting uthread %016p\n", vcoreid,
 	       current_uthread);
 	if (has_refl_fault(&vcpd->uthread_ctx)) {
 		clear_refl_fault(&vcpd->uthread_ctx);

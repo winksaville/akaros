@@ -35,7 +35,7 @@ struct uthread {
 	char err_str[MAX_ERRSTR_LEN];
 };
 typedef struct uthread uthread_t;
-extern __thread struct uthread *current_uthread;
+extern __thread struct uthread * volatile current_uthread;
 
 /* 2L-Scheduler operations.  Examples in pthread.c. */
 struct schedule_ops {
@@ -99,23 +99,6 @@ static inline void init_uthread_ctx(struct uthread *uth, void (*entry)(void),
 {
 	init_user_ctx(&uth->u_ctx, (long)entry, (long)(stack_bottom) + size);
 }
-
-#define uthread_set_tls_var(uth, name, val)                                    \
-({                                                                             \
-	typeof(val) __val = val;                                                   \
-	begin_access_tls_vars(((struct uthread*)(uth))->tls_desc);                 \
-	name = __val;                                                              \
-	end_access_tls_vars();                                                     \
-})
-
-#define uthread_get_tls_var(uth, name)                                         \
-({                                                                             \
-	typeof(name) val;                                                          \
-	begin_access_tls_vars(((struct uthread*)(uth))->tls_desc);                 \
-	val = name;                                                                \
-	end_access_tls_vars();                                                     \
-	val;                                                                       \
-})
 
 /* This works so long as we don't dlopen parlib (which we never do) */
 static inline struct uthread **get_cur_uth_addr(uint32_t vcoreid)
