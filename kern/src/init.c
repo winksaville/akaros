@@ -5,6 +5,7 @@
 #else
 
 #include <arch/arch.h>
+#include <arch/topology.h>
 #include <arch/console.h>
 #include <multiboot.h>
 #include <stab.h>
@@ -72,6 +73,7 @@ void kernel_init(multiboot_info_t *mboot_info)
 	cache_color_alloc_init();       // Inits data structs
 	colored_page_alloc_init();      // Allocates colors for agnostic processes
 	acpiinit();
+	topology_init();
 	kthread_init();					/* might need to tweak when this happens */
 	vmr_init();
 	file_init();
@@ -84,6 +86,9 @@ void kernel_init(multiboot_info_t *mboot_info)
 	train_timing();
 	kb_buf_init(&cons_buf);
 	arch_init();
+	//
+	print_cpu_topology();
+	//
 	block_init();
 	enable_irq();
 	run_linker_funcs();

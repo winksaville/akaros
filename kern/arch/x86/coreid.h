@@ -3,6 +3,7 @@
 
 #include <ros/common.h>
 #include <arch/apic.h>
+#include <arch/topology.h>
 
 static inline int get_hw_coreid(uint32_t coreid) __attribute__((always_inline));
 static inline int hw_core_id(void) __attribute__((always_inline));
@@ -10,10 +11,6 @@ static inline int get_os_coreid(int hw_coreid) __attribute__((always_inline));
 static inline int core_id(void) __attribute__((always_inline));
 static inline int node_id(void) __attribute__((always_inline));
 static inline int core_id_early(void) __attribute__((always_inline));
-
-/* declared in smp.c */
-extern int hw_coreid_lookup[MAX_NUM_CPUS];
-extern int os_coreid_lookup[MAX_NUM_CPUS];
 
 /* os_coreid -> hw_coreid */
 static inline int get_hw_coreid(uint32_t coreid)

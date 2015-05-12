@@ -11,6 +11,7 @@
 #include <arch/apic.h>
 #include <arch/perfmon.h>
 #include <time.h>
+#include <arch/topology.h>
 
 #include <bitmask.h>
 #include <atomic.h>

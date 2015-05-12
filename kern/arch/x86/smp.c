@@ -17,10 +17,6 @@
 #include <env.h>
 #include <trap.h>
 
-/* Lookup table for core_id and per_cpu_inf, indexed by real __core_id() */
-int hw_coreid_lookup[MAX_NUM_CPUS] = {[0 ... (MAX_NUM_CPUS - 1)] -1};
-int os_coreid_lookup[MAX_NUM_CPUS] = {[0 ... (MAX_NUM_CPUS - 1)] -1};
-
 /*************************** IPI Wrapper Stuff ********************************/
 // checklists to protect the global interrupt_handlers for 0xf0, f1, f2, f3, f4
 // need to be global, since there is no function that will always exist for them
