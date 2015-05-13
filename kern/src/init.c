@@ -86,9 +86,6 @@ void kernel_init(multiboot_info_t *mboot_info)
 	train_timing();
 	kb_buf_init(&cons_buf);
 	arch_init();
-	//
-	print_cpu_topology();
-	//
 	block_init();
 	enable_irq();
 	run_linker_funcs();

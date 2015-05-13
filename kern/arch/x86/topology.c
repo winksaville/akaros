@@ -35,22 +35,6 @@ static void build_topology(uint32_t cpu_bits, uint32_t core_bits)
     }
 }
 
-
-static void build_flat_topology()
-{
-    struct Apicst *temp = apics->st;
-    while (temp) {
-	if (temp->type == ASlapic) {
-	    int apic_id = temp->lapic.id;
-	    cpu_topology[apic_id].thread_id = apic_id;
-	    cpu_topology[apic_id].core_id = 0;
-	    cpu_topology[apic_id].socket_id = 0;
-	    cpu_topology[apic_id].numa_id = 0;
-	}
-	temp = temp->next;
-    }	    
-}
-
 void topology_init()
 {
     uint32_t eax, ebx, ecx, edx;
@@ -75,7 +59,7 @@ void topology_init()
     	    build_topology(cpu_bits, core_bits);
     	}
     } else {
-    	build_flat_topology();
+	    build_topology(-1,-1);
     }
     return;   
 }
