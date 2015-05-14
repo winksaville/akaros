@@ -57,11 +57,12 @@ void topology_init()
     	if (core_leaf == 2) {
     	    core_bits = eax - cpu_bits;
     	    build_topology(cpu_bits, core_bits);
-    	}
+    	}else {
+	    build_topology(-1,-1);
+	}
     } else {
 	    build_topology(-1,-1);
-    }
-    return;   
+    }  
 }
 
 /* Can only be called after kthread_init because we need num_cpus */
