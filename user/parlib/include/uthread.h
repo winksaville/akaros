@@ -38,6 +38,7 @@ struct uthread {
 };
 typedef struct uthread uthread_t;
 extern __thread struct uthread *current_uthread;
+extern bool parlib_wants_to_be_mcp;
 
 /* 2L-Scheduler operations.  Examples in pthread.c. */
 struct schedule_ops {

@@ -18,6 +18,7 @@ struct schedule_ops default_2ls_ops = {
 struct schedule_ops *sched_ops = &default_2ls_ops;
 
 __thread struct uthread *current_uthread = 0;
+bool parlib_wants_to_be_mcp = TRUE;
 
 static struct uthread *thread0;
 /* ev_q for all preempt messages (handled here to keep 2LSs from worrying
@@ -96,6 +97,22 @@ void uthread_mcp_init()
 {
 	/* Prevent this from happening more than once. */
 	init_once_racy(return);
+
+	/* Doing this after the init_once check, since we don't want to let the
+	 * process/2LS change their mind about being an MCP or not once they have
+	 * multiple threads.
+	 *
+	 * The reason is that once you set "MCP please" on, you could get
+	 * interrupted into VC ctx, say for a syscall completion, and then make
+	 * decisions based on the fact that you're an MCP (e.g., unblocking a
+	 * uthread, asking for vcores, etc), even though you are not an MCP.
+	 * Arguably, these things could happen for signals too, but all of this is
+	 * less likely than if we have multiple threads.
+	 *
+	 * Also, we could just abort here, since they shouldn't be calling
+	 * mcp_init() if they don't want to be an MCP. */
+	if (!parlib_wants_to_be_mcp)
+		return;
 
 	/* Receive preemption events.  Note that this merely tells the kernel how to
 	 * send the messages, and does not necessarily provide storage space for the
