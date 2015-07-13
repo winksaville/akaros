@@ -16,9 +16,11 @@ struct schedule_ops default_2ls_ops = {
 struct schedule_ops *sched_ops = &default_2ls_ops;
 
 __thread struct uthread *current_uthread = 0;
+
+static struct uthread *thread0;
 /* ev_q for all preempt messages (handled here to keep 2LSs from worrying
  * extensively about the details.  Will call out when necessary. */
-struct event_queue *preempt_ev_q;
+static struct event_queue *preempt_ev_q;
 
 /* Helpers: */
 #define UTH_TLSDESC_NOTLS (void*)(-1)
@@ -60,6 +62,7 @@ static void uthread_manage_thread0(struct uthread *uthread)
 	/* need to track thread0 for TLS deallocation */
 	uthread->flags |= UTHREAD_IS_THREAD0;
 	uthread->notif_disabled_depth = 0;
+	thread0 = uthread;
 	/* Change temporarily to vcore0s tls region so we can save the newly created
 	 * tcb into its current_uthread variable and then restore it.  One minor
 	 * issue is that vcore0's transition-TLS isn't TLS_INITed yet.  Until it is
@@ -1108,4 +1111,6 @@ static void __scp_sched_entry(void)
 {
 	if (current_uthread)
 		run_current_uthread();
+	else
+		run_uthread(thread0);
 }
