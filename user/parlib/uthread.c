@@ -10,8 +10,10 @@
  * its individual function pointers or have basic functions for SCPs.  A 2LS
  * should override sched_ops in its init code. */
 static void __scp_sched_entry(void);
+static void __scp_thread_blockon_sysc(struct uthread *uthread, void *sysc);
 struct schedule_ops default_2ls_ops = {
 	.sched_entry = __scp_sched_entry,
+	.thread_blockon_sysc = __scp_thread_blockon_sysc,
 };
 struct schedule_ops *sched_ops = &default_2ls_ops;
 
@@ -34,9 +36,7 @@ static void handle_vc_preempt(struct event_msg *ev_msg, unsigned int ev_type,
                               void *data);
 static void handle_vc_indir(struct event_msg *ev_msg, unsigned int ev_type,
                             void *data);
-
-/* Block the calling uthread on sysc until it makes progress or is done */
-static void __ros_mcp_syscall_blockon(struct syscall *sysc);
+static void __ros_uth_syscall_blockon(struct syscall *sysc);
 
 /* Helper, make the uthread code manage thread0.  This sets up uthread such
  * that the calling code and its TLS are tracked by the uthread struct, and
@@ -186,12 +186,13 @@ void __attribute__((constructor)) uthread_lib_init(void)
 	memset(uthread, 0, sizeof(struct uthread));	/* aggressively 0 for bugs */
 	uthread_manage_thread0(uthread);
 	scp_vcctx_ready();
+	/* Change our blockon from glibc's internal one to the regular one, which
+	 * uses vcore context and works for SCPs (with or without 2LS) and MCPs.
+	 * Once we tell the kernel we are ready to utilize vcore context, we need
+	 * our blocking syscalls to utilize it as well. */
+	ros_syscall_blockon = __ros_uth_syscall_blockon;
+	cmb();
 	init_posix_signals();
-	/* change our blockon from glibc's internal one to the mcp one (which can
-	 * handle SCPs too).  we must do this before switching to _M, or at least
-	 * before blocking while an _M.  it's harmless (and probably saner) to do it
-	 * earlier, so we do it as early as possible. */
-	ros_syscall_blockon = __ros_mcp_syscall_blockon;
 	/* Switch our errno/errstr functions to be uthread-aware.  See glibc's
 	 * errno.c for more info. */
 	ros_errno_loc = __ros_errno_loc;
@@ -442,34 +443,34 @@ static void __ros_syscall_spinon(struct syscall *sysc)
 		cpu_relax();
 }
 
-/* Attempts to block on sysc, returning when it is done or progress has been
- * made. */
-void __ros_mcp_syscall_blockon(struct syscall *sysc)
+static void __ros_vcore_ctx_syscall_blockon(struct syscall *sysc)
 {
-	/* even if we are in 'vcore context', an _S can block */
-	if (!in_multi_mode()) {
-		/* the SCP could have an alarm set to abort this sysc.  When we have a
-		 * uth blocked on a sysc, we want this pointer set up (like we do below
-		 * for MCP)s */
-		current_uthread->sysc = sysc;
-		__ros_scp_syscall_blockon(sysc);
-		current_uthread->sysc = 0;
-		return;
-	}
-	/* MCP vcore's don't know what to do yet, so we have to spin */
-	if (in_vcore_context()) {
+	if (in_multi_mode()) {
+		/* MCP vcore's don't know what to do yet, so we have to spin */
 		__ros_syscall_spinon(sysc);
+	} else {
+		/* SCPs can use the early blockon, which acts like VC ctx. */
+		__ros_early_syscall_blockon(sysc);
+	}
+}
+
+/* Attempts to block on sysc, returning when it is done or progress has been
+ * made.  Made for initialized processes using uthreads. */
+static void __ros_uth_syscall_blockon(struct syscall *sysc)
+{
+	if (in_vcore_context()) {
+		__ros_vcore_ctx_syscall_blockon(sysc);
 		return;
 	}
-	/* At this point, we know we're a uthread in an MCP.  If we're a
-	 * DONT_MIGRATE uthread, then it's disabled notifs and is basically in
-	 * vcore context, enough so that it can't call into the 2LS. */
+	/* At this point, we know we're a uthread.  If we're a DONT_MIGRATE uthread,
+	 * then it's disabled notifs and is basically in vcore context, enough so
+	 * that it can't call into the 2LS. */
 	assert(current_uthread);
 	if (current_uthread->flags & UTHREAD_DONT_MIGRATE) {
 		assert(!notif_is_enabled(vcore_id()));	/* catch bugs */
 		/* if we had a notif_disabled_depth, then we should also have
 		 * DONT_MIGRATE set */
-		__ros_syscall_spinon(sysc);
+		__ros_vcore_ctx_syscall_blockon(sysc);
 		return;
 	}
 	assert(!current_uthread->notif_disabled_depth);
@@ -1113,4 +1114,33 @@ static void __scp_sched_entry(void)
 		run_current_uthread();
 	else
 		run_uthread(thread0);
+}
+
+static void __scp_thread_blockon_sysc(struct uthread *uthread, void *arg)
+{
+	struct syscall *sysc = (struct syscall*)arg;
+	/* We're in vcore context.  Regardless of what we do here, we'll pop back in
+	 * to vcore entry, just like with any uthread_yield.  We don't have a 2LS,
+	 * but we always have one uthread: the SCP's thread0.  Note that at this
+	 * point, current_uthread is still set, but will be cleared as soon as the
+	 * callback returns (and before we start over in vcore_entry).
+	 *
+	 * If notif_pending is already set (due to a concurrent signal), we'll fail
+	 * to yield.  Once in VC ctx, we'll handle any other signals/events that
+	 * arrived, then restart the uthread that issued the syscall, which if the
+	 * syscall isn't done yet, will just blockon again.
+	 *
+	 * The one trick is that we don't want to register the evq twice.  The way
+	 * register_evq currently works, if a SC completed (SC_DONE) while we were
+	 * registering, we could end up clearing sysc->ev_q before the kernel sees
+	 * it.  We'll use u_data to track whether we registered or not. */
+	#define U_DATA_BLOB ((void*)0x55555555)
+	if ((sysc->u_data == U_DATA_BLOB)
+	    || register_evq(sysc, &__ros_scp_simple_evq)) {
+		sysc->u_data = U_DATA_BLOB;
+		/* Sending false for now - we want to signal proc code that we want to
+		 * wait (piggybacking on the MCP meaning of this variable).  If
+		 * notif_pending is set, the kernel will immediately return us. */
+		__ros_syscall_noerrno(SYS_yield, FALSE, 0, 0, 0, 0, 0);
+	}
 }
