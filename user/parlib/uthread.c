@@ -7,9 +7,12 @@
 #include <stdlib.h>
 
 /* By default there is no 2LS, but we still want sched_ops set so we can check
- * its individual function pointers. A 2LS should override sched_ops in its
- * init code. */
-struct schedule_ops default_2ls_ops = {0};
+ * its individual function pointers or have basic functions for SCPs.  A 2LS
+ * should override sched_ops in its init code. */
+static void __scp_sched_entry(void);
+struct schedule_ops default_2ls_ops = {
+	.sched_entry = __scp_sched_entry,
+};
 struct schedule_ops *sched_ops = &default_2ls_ops;
 
 __thread struct uthread *current_uthread = 0;
@@ -227,17 +230,8 @@ void __attribute__((noreturn)) uthread_vcore_entry(void)
 	handle_events(vcoreid);
 	__check_preempt_pending(vcoreid);
 	assert(in_vcore_context());	/* double check, in case an event changed it */
-	/* Consider using the default_2ls_op for this, though it's a bit weird. */
-	if (sched_ops->sched_entry) {
-		sched_ops->sched_entry();
-	} else if (current_uthread) {
-		run_current_uthread();
-	}
-	/* 2LS sched_entry should never return */
-	/* Either the 2LS sched_entry returned, run_cur_uth() returned, or we
-	 * didn't have a current_uthread.  If we didn't have a 2LS op, we should be
-	 * in _S mode and always have a current_uthread. */
-	assert(0);
+	sched_ops->sched_entry();
+	assert(0); /* 2LS sched_entry should never return */
 }
 
 /* Does the uthread initialization of a uthread that the caller created.  Call
@@ -1107,4 +1101,11 @@ static void __uthread_free_tls(struct uthread *uthread)
 {
 	free_tls(uthread->tls_desc);
 	uthread->tls_desc = NULL;
+}
+
+/* SCP scheduler ops (for processes without a 2LS) */
+static void __scp_sched_entry(void)
+{
+	if (current_uthread)
+		run_current_uthread();
 }
